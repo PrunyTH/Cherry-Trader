@@ -888,6 +888,10 @@ input {
   color: #0b3d24;
 }
 
+.heat-cell.neutral {
+  color: #7c4a12;
+}
+
 .heat-cell.loss {
   color: #58151f;
 }

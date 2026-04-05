@@ -69,6 +69,7 @@ type TimeframeComparisonRow = {
     win_rate: number;
     total_fees: number;
     max_drawdown: number;
+    score: number;
   };
 };
 
@@ -81,6 +82,7 @@ type StopSensitivityRow = {
     win_rate: number;
     total_fees: number;
     max_drawdown: number;
+    score: number;
   };
 };
 
@@ -94,6 +96,21 @@ type HeatmapCell = {
     win_rate: number;
     total_fees: number;
     max_drawdown: number;
+    score: number;
+  };
+};
+
+type AnalysisHeatmapCell = {
+  interval: string;
+  historyRange: HistoryRange;
+  stats: {
+    total_return_pct: number;
+    final_equity: number;
+    total_trades: number;
+    win_rate: number;
+    total_fees: number;
+    max_drawdown: number;
+    score: number;
   };
 };
 
@@ -294,6 +311,7 @@ export function TradingLabPage() {
     pnl: 0,
     total_fees: 0,
     max_drawdown: 0,
+    score: 0,
   });
   const [status, setStatus] = useState("loading market data");
   const [candles, setCandles] = useState<CandlestickData[]>([]);
@@ -306,6 +324,8 @@ export function TradingLabPage() {
   const [stopBusy, setStopBusy] = useState(false);
   const [heatmapCells, setHeatmapCells] = useState<HeatmapCell[]>([]);
   const [heatmapBusy, setHeatmapBusy] = useState(false);
+  const [analysisHeatmapCells, setAnalysisHeatmapCells] = useState<AnalysisHeatmapCell[]>([]);
+  const [analysisBusy, setAnalysisBusy] = useState(false);
   const [progressStage, setProgressStage] = useState<"idle" | "loading" | "backtest" | "compare" | "stops" | "done">("idle");
   const [progressPct, setProgressPct] = useState(0);
   const [cherryPins, setCherryPins] = useState<CherryPin[]>([]);
@@ -828,6 +848,7 @@ export function TradingLabPage() {
       setComparisonBusy(true);
       setStopBusy(true);
       setHeatmapBusy(true);
+      setAnalysisBusy(true);
       const result = await runBacktestBundle(
         SYMBOL,
         backtestInterval,
@@ -851,6 +872,12 @@ export function TradingLabPage() {
       setComparisonRows(result.comparison_rows ?? []);
       setStopRows(result.stop_rows ?? []);
       setHeatmapCells(result.heatmap_cells ?? []);
+      setAnalysisHeatmapCells(
+        (result.analysis_heatmap_cells ?? []).map((cell) => ({
+          ...cell,
+          historyRange: cell.historyRange as HistoryRange,
+        })),
+      );
       setProgressStage("done");
       setProgressPct(100);
       setStatus(`run ${result.run_id} complete`);
@@ -860,6 +887,7 @@ export function TradingLabPage() {
       setComparisonBusy(false);
       setStopBusy(false);
       setHeatmapBusy(false);
+      setAnalysisBusy(false);
       window.setTimeout(() => {
         setProgressStage("idle");
         setProgressPct(0);
@@ -1054,6 +1082,7 @@ export function TradingLabPage() {
             <Stat label="Final (USDT)" value={formatNumber(stats.final_equity)} />
             <Stat label="Return" value={`${formatNumber(stats.total_return_pct)}%`} />
             <Stat label="Fees (USDT)" value={formatNumber(stats.total_fees)} />
+            <Stat label="Score" value={formatNumber(stats.score)} />
             <Stat label="Max DD" value={formatNumber(stats.max_drawdown)} />
           </div>
           <div className="metric-note">
@@ -1181,6 +1210,16 @@ export function TradingLabPage() {
             <span className="pill">{heatmapBusy ? "running..." : `${heatmapCells.length} combos`}</span>
           </div>
           <HeatmapTable cells={heatmapCells} activeInterval={backtestInterval} activeStop={1.5} />
+        </section>
+        <section className="panel comparison-panel heatmap-panel">
+          <div className="panel-head">
+            <h3>Analysis Period Heatmap</h3>
+            <span className="pill">{analysisBusy ? "running..." : `${analysisHeatmapCells.length} combos`}</span>
+          </div>
+          <div className="table-note">
+            Cells are ranked by a heuristic robustness score that blends return, drawdown, win rate, fees, and trade count.
+          </div>
+          <AnalysisHeatmapTable cells={analysisHeatmapCells} activeInterval={backtestInterval} activeRange={historyRange} />
         </section>
         <div className={`insights-grid ${chartMaximized ? "hidden" : ""}`}>
           <section className="panel comparison-panel">
@@ -1472,6 +1511,7 @@ function ComparisonTable({
             <th>Fees (USDT)</th>
             <th>Trades</th>
             <th>Win Rate</th>
+            <th>Score</th>
             <th>Max DD</th>
           </tr>
         </thead>
@@ -1486,6 +1526,7 @@ function ComparisonTable({
               <td>{formatNumber(row.stats.total_fees)}</td>
               <td>{row.stats.total_trades}</td>
               <td>{formatNumber(row.stats.win_rate)}%</td>
+              <td>{formatNumber(row.stats.score)}</td>
               <td>{formatNumber(row.stats.max_drawdown)}</td>
             </tr>
           ))}
@@ -1519,6 +1560,7 @@ function StopSensitivityTable({
             <th>Fees (USDT)</th>
             <th>Trades</th>
             <th>Win Rate</th>
+            <th>Score</th>
             <th>Max DD</th>
           </tr>
         </thead>
@@ -1533,6 +1575,7 @@ function StopSensitivityTable({
               <td>{formatNumber(row.stats.total_fees)}</td>
               <td>{row.stats.total_trades}</td>
               <td>{formatNumber(row.stats.win_rate)}%</td>
+              <td>{formatNumber(row.stats.score)}</td>
               <td>{formatNumber(row.stats.max_drawdown)}</td>
             </tr>
           ))}
@@ -1612,6 +1655,90 @@ function HeatmapTable({
                   >
                     <div className="heat-value">{formatNumber(cell.stats.total_return_pct)}%</div>
                     <div className="heat-meta">{formatNumber(cell.stats.final_equity)} USDT</div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AnalysisHeatmapTable({
+  cells,
+  activeInterval,
+  activeRange,
+}: {
+  cells: AnalysisHeatmapCell[];
+  activeInterval: string;
+  activeRange: HistoryRange;
+}) {
+  if (!cells.length) {
+    return <div className="empty-state">Run a backtest to compare periods and timeframe robustness.</div>;
+  }
+
+  const rows = COMPARISON_INTERVALS;
+  const cols = HISTORY_OPTIONS.map((option) => option.value);
+  const cellMap = new Map(cells.map((cell) => [`${cell.interval}:${cell.historyRange}`, cell]));
+  const values = cells.map((cell) => cell.stats.score);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+
+  function intensity(value: number) {
+    const normalized = (value - min) / span;
+    return 0.12 + normalized * 0.32;
+  }
+
+  function scoreClass(value: number) {
+    if (value >= 70) {
+      return "heat-cell gain";
+    }
+    if (value >= 45) {
+      return "heat-cell neutral";
+    }
+    return "heat-cell loss";
+  }
+
+  return (
+    <div className="trade-table-wrap heatmap-wrap">
+      <table className="trade-table heatmap-table">
+        <thead>
+          <tr>
+            <th>Timeframe</th>
+            {cols.map((range) => (
+              <th key={range}>{HISTORY_OPTIONS.find((option) => option.value === range)?.label ?? range}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((intervalRow) => (
+            <tr key={intervalRow} className={intervalRow === activeInterval ? "active-row" : ""}>
+              <td>
+                <span className="trade-chip time-frame">{intervalRow}</span>
+              </td>
+              {cols.map((range) => {
+                const cell = cellMap.get(`${intervalRow}:${range}`);
+                if (!cell) {
+                  return <td key={range} className="heat-empty">-</td>;
+                }
+                const active = intervalRow === activeInterval && range === activeRange;
+                const backgroundOpacity = intensity(cell.stats.score);
+                return (
+                  <td
+                    key={range}
+                    className={`${scoreClass(cell.stats.score)} ${active ? "active-cell" : ""}`}
+                    style={{
+                      backgroundColor:
+                        cell.stats.score >= 50
+                          ? `rgba(15, 157, 88, ${backgroundOpacity})`
+                          : `rgba(215, 38, 61, ${backgroundOpacity})`,
+                    }}
+                  >
+                    <div className="heat-value">{formatNumber(cell.stats.score)}</div>
+                    <div className="heat-meta">{formatNumber(cell.stats.total_return_pct)}%</div>
                   </td>
                 );
               })}

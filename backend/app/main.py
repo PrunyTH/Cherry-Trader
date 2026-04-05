@@ -164,6 +164,22 @@ def prepare_backtest_candles(candles: list[dict[str, object]], lookback_days: in
     return candles[start_index:], evaluation_start_time
 
 
+def history_range_for_days(days: int) -> str:
+    if days <= 1:
+        return "1D"
+    if days <= 30:
+        return "1M"
+    if days <= 90:
+        return "3M"
+    if days <= 180:
+        return "6M"
+    if days <= 365:
+        return "1Y"
+    if days <= 730:
+        return "2Y"
+    return "ALL"
+
+
 def backtest_stats(result) -> dict[str, float]:
     return {
         "total_return_pct": result.total_return_pct,
@@ -172,7 +188,27 @@ def backtest_stats(result) -> dict[str, float]:
         "win_rate": result.win_rate,
         "total_fees": result.total_fees,
         "max_drawdown": result.max_drawdown,
+        "score": score_backtest_result(result),
     }
+
+
+def score_backtest_result(result) -> float:
+    if result.total_trades <= 0:
+        return 0.0
+    start_capital = max(result.start_capital, 1e-9)
+    return_component = max(0.0, min(100.0, 50.0 + result.total_return_pct * 1.5))
+    drawdown_component = max(0.0, min(100.0, 100.0 - (result.max_drawdown / start_capital) * 100.0))
+    win_component = max(0.0, min(100.0, result.win_rate))
+    fee_component = max(0.0, min(100.0, 100.0 - (result.total_fees / start_capital) * 100.0))
+    trade_component = max(0.0, min(100.0, (result.total_trades / 30.0) * 100.0))
+    score = (
+        return_component * 0.35
+        + drawdown_component * 0.35
+        + win_component * 0.2
+        + fee_component * 0.04
+        + trade_component * 0.06
+    )
+    return round(score, 2)
 
     threading.Thread(target=_runner, daemon=True).start()
 
@@ -282,6 +318,7 @@ def api_backtest(request: BacktestRequest):
             "pnl": result.pnl,
             "total_fees": result.total_fees,
             "max_drawdown": result.max_drawdown,
+            "score": score_backtest_result(result),
         },
         "trades": result.trades,
         "markers": result.markers,
@@ -293,22 +330,39 @@ def api_backtest(request: BacktestRequest):
 def api_backtest_bundle(request: BacktestBundleRequest):
     comparison_intervals = list(dict.fromkeys(request.comparison_intervals))
     stop_multipliers = list(dict.fromkeys(request.stop_multipliers))
+    selected_range_label = history_range_for_days(request.lookback_days)
+    analysis_ranges = list(dict.fromkeys([selected_range_label, *request.analysis_ranges]))
     intervals = list(dict.fromkeys([request.interval, *comparison_intervals]))
-    result_cache: dict[tuple[str, float], Any] = {}
+    result_cache: dict[tuple[str, str, float], Any] = {}
+    selected_stop = float(request.stop_loss_atr_mult)
+    stop_values = list(dict.fromkeys([selected_stop, *[float(multiplier) for multiplier in stop_multipliers]]))
 
     for interval in intervals:
         candles = get_all_closed_candles(request.symbol, interval)
-        candles, evaluation_start_time = prepare_backtest_candles(candles, request.lookback_days)
-        for multiplier in list(dict.fromkeys([request.stop_loss_atr_mult, *stop_multipliers])):
-            result_cache[(interval, float(multiplier))] = run_trend_pullback_backtest(
-                candles,
+        selected_candles, selected_evaluation_start_time = prepare_backtest_candles(candles, request.lookback_days)
+        for multiplier in stop_values:
+            result_cache[(interval, selected_range_label, multiplier)] = run_trend_pullback_backtest(
+                selected_candles,
                 request.capital,
                 request.leverage,
-                float(multiplier),
+                multiplier,
+                selected_evaluation_start_time,
+            )
+
+        for range_label in analysis_ranges:
+            if range_label == selected_range_label:
+                continue
+            lookback_days = history_days_for_range(range_label)
+            candles_for_range, evaluation_start_time = prepare_backtest_candles(candles, lookback_days)
+            result_cache[(interval, range_label, selected_stop)] = run_trend_pullback_backtest(
+                candles_for_range,
+                request.capital,
+                request.leverage,
+                selected_stop,
                 evaluation_start_time,
             )
 
-    base_result = result_cache[(request.interval, float(request.stop_loss_atr_mult))]
+    base_result = result_cache[(request.interval, selected_range_label, selected_stop)]
     started_at = int(time.time() * 1000)
     run_id = create_run(
         request.symbol,
@@ -330,28 +384,38 @@ def api_backtest_bundle(request: BacktestBundleRequest):
     comparison_rows = [
         {
             "interval": interval,
-            "stats": backtest_stats(result_cache[(interval, float(request.stop_loss_atr_mult))]),
+            "stats": backtest_stats(result_cache[(interval, selected_range_label, selected_stop)]),
         }
         for interval in comparison_intervals
-        if (interval, float(request.stop_loss_atr_mult)) in result_cache
+        if (interval, selected_range_label, selected_stop) in result_cache
     ]
     stop_rows = [
         {
             "stopLossAtrMult": multiplier,
-            "stats": backtest_stats(result_cache[(request.interval, float(multiplier))]),
+            "stats": backtest_stats(result_cache[(request.interval, selected_range_label, float(multiplier))]),
         }
         for multiplier in stop_multipliers
-        if (request.interval, float(multiplier)) in result_cache
+        if (request.interval, selected_range_label, float(multiplier)) in result_cache
     ]
     heatmap_cells = [
         {
             "interval": interval,
             "stopLossAtrMult": multiplier,
-            "stats": backtest_stats(result_cache[(interval, float(multiplier))]),
+            "stats": backtest_stats(result_cache[(interval, selected_range_label, float(multiplier))]),
         }
         for interval in intervals
         for multiplier in stop_multipliers
-        if (interval, float(multiplier)) in result_cache
+        if (interval, selected_range_label, float(multiplier)) in result_cache
+    ]
+    analysis_heatmap_cells = [
+        {
+            "interval": interval,
+            "historyRange": range_label,
+            "stats": backtest_stats(result_cache[(interval, range_label, selected_stop)]),
+        }
+        for interval in intervals
+        for range_label in analysis_ranges
+        if (interval, range_label, selected_stop) in result_cache
     ]
 
     return {
@@ -365,6 +429,7 @@ def api_backtest_bundle(request: BacktestBundleRequest):
         "comparison_rows": comparison_rows,
         "stop_rows": stop_rows,
         "heatmap_cells": heatmap_cells,
+        "analysis_heatmap_cells": analysis_heatmap_cells,
     }
 
 

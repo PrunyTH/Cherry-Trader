@@ -50,6 +50,7 @@ export type BacktestStats = {
   pnl: number;
   total_fees: number;
   max_drawdown: number;
+  score: number;
 };
 
 export type BacktestResponse = {
@@ -89,6 +90,11 @@ export type BacktestBundleResponse = {
   heatmap_cells: Array<{
     interval: string;
     stopLossAtrMult: number;
+    stats: BacktestStats;
+  }>;
+  analysis_heatmap_cells: Array<{
+    interval: string;
+    historyRange: string;
     stats: BacktestStats;
   }>;
 };
@@ -194,6 +200,34 @@ function tradePnl(entryPrice: number, exitPrice: number, quantity: number, feeRa
   return { pnl: gross - fees, fees };
 }
 
+function scoreBacktestStats(stats: {
+  start_capital: number;
+  total_return_pct: number;
+  total_trades: number;
+  win_rate: number;
+  total_fees: number;
+  max_drawdown: number;
+}) {
+  if (stats.total_trades <= 0) {
+    return 0;
+  }
+  const startCapital = Math.max(stats.start_capital, 1e-9);
+  const returnComponent = Math.max(0, Math.min(100, 50 + stats.total_return_pct * 1.5));
+  const drawdownComponent = Math.max(0, Math.min(100, 100 - (stats.max_drawdown / startCapital) * 100));
+  const winComponent = Math.max(0, Math.min(100, stats.win_rate));
+  const feeComponent = Math.max(0, Math.min(100, 100 - (stats.total_fees / startCapital) * 100));
+  const tradeComponent = Math.max(0, Math.min(100, (stats.total_trades / 30) * 100));
+  return Number(
+    (
+      returnComponent * 0.35 +
+      drawdownComponent * 0.35 +
+      winComponent * 0.2 +
+      feeComponent * 0.04 +
+      tradeComponent * 0.06
+    ).toFixed(2),
+  );
+}
+
 const BINANCE_TAKER_FEE_RATE = 0.0005;
 
 function runTrendPullbackBacktestLocal(
@@ -216,6 +250,7 @@ function runTrendPullbackBacktestLocal(
         pnl: 0,
         total_fees: 0,
         max_drawdown: 0,
+        score: 0,
       },
       trades: [],
       equity_curve: [],
@@ -422,6 +457,14 @@ function runTrendPullbackBacktestLocal(
       pnl: totalPnl,
       total_fees: totalFees,
       max_drawdown: maxDrawdown,
+      score: scoreBacktestStats({
+        start_capital: capital,
+        total_return_pct: totalReturnPct,
+        total_trades: totalTrades,
+        win_rate: winRate,
+        total_fees: totalFees,
+        max_drawdown: maxDrawdown,
+      }),
     },
     trades,
     equity_curve: equityCurve,
@@ -504,6 +547,7 @@ export async function runBacktestBundle(
   stop_loss_atr_mult = 1.5,
   comparison_intervals: string[] = ["15m", "1h", "4h", "1d", "1w", "1M"],
   stop_multipliers: number[] = [0.75, 1.0, 1.5, 2.0, 2.5, 3.0],
+  analysis_ranges: string[] = ["1D", "1M", "3M", "6M", "1Y", "2Y", "ALL"],
 ) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 60_000);
@@ -520,6 +564,7 @@ export async function runBacktestBundle(
         stop_loss_atr_mult,
         comparison_intervals,
         stop_multipliers,
+        analysis_ranges,
       }),
       signal: controller.signal,
     });
