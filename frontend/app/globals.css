@@ -527,8 +527,6 @@ input {
   min-height: 640px;
   height: 62vh;
   flex: 1;
-  padding: 0 20px 20px;
-  box-sizing: border-box;
   overflow: hidden;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 244, 244, 0.35)),
@@ -542,12 +540,12 @@ input {
 
 .chart {
   position: absolute;
-  inset: 0;
+  inset: 0 20px 20px 20px;
 }
 
 .chart-overlay {
   position: absolute;
-  inset: 0;
+  inset: 0 20px 20px 20px;
   pointer-events: none;
   z-index: 3;
 }
@@ -993,11 +991,18 @@ input {
   .chart-wrap {
     min-height: 520px;
     height: 56vh;
-    padding: 0 16px 16px;
   }
 
   .chart-wrap.maximized {
     height: calc(100vh - 88px);
     min-height: calc(100vh - 88px);
+  }
+
+  .chart {
+    inset: 0 16px 16px 16px;
+  }
+
+  .chart-overlay {
+    inset: 0 16px 16px 16px;
   }
 }
