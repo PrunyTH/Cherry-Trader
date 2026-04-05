@@ -58,7 +58,7 @@ type ChartZone = {
   kind: "good" | "bad";
 };
 
-type HistoryRange = "1M" | "3M" | "1Y" | "ALL";
+type HistoryRange = "1D" | "1M" | "3M" | "6M" | "1Y" | "2Y" | "ALL";
 
 type TimeframeComparisonRow = {
   interval: string;
@@ -102,9 +102,12 @@ const DEFAULT_INTERVAL = process.env.NEXT_PUBLIC_DEFAULT_INTERVAL ?? "1w";
 const TIMEFRAMES = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w", "1M"];
 const CHART_TIMEFRAMES = ["15m", "1h", "4h", "1d", "1w", "1M"];
 const HISTORY_OPTIONS: Array<{ value: HistoryRange; label: string }> = [
+  { value: "1D", label: "1 day" },
   { value: "1M", label: "1 month" },
   { value: "3M", label: "3 months" },
+  { value: "6M", label: "6 months" },
   { value: "1Y", label: "1 year" },
+  { value: "2Y", label: "2 years" },
   { value: "ALL", label: "All available" },
 ];
 const COMPARISON_INTERVALS = ["15m", "1h", "4h", "1d", "1w", "1M"];
@@ -199,12 +202,18 @@ function mergeCandleSeries(current: CandlestickData[], next: CandlestickData) {
 
 function historyDaysForRange(range: HistoryRange) {
   switch (range) {
+    case "1D":
+      return 1;
     case "1M":
       return 30;
     case "3M":
       return 90;
+    case "6M":
+      return 180;
     case "1Y":
       return 365;
+    case "2Y":
+      return 730;
     case "ALL":
       return 3650;
   }

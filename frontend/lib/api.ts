@@ -449,11 +449,14 @@ export async function runBacktest(
   leverage: number,
   stop_loss_atr_mult = 1.5,
 ) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
   try {
     const response = await fetch(`${BACKEND_URL}/api/backtest`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ symbol, interval, lookback_days, capital, leverage, stop_loss_atr_mult }),
+      signal: controller.signal,
     });
     if (!response.ok) {
       throw new Error(`backend backtest request failed: ${response.status}`);
@@ -463,5 +466,7 @@ export async function runBacktest(
     const candlesNeeded = Math.min(Math.max(Math.ceil((lookback_days * 24 * 60) / intervalToMinutes(interval)) + 250, 500), 250000);
     const candles = await fetchBinanceCandlesPaged(symbol, interval, candlesNeeded);
     return runTrendPullbackBacktestLocal(candles, capital, leverage, stop_loss_atr_mult, lookback_days);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 }
