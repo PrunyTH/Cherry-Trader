@@ -440,6 +440,7 @@ function updateChartZones() {
   let segmentStartIndex = 0;
   let currentOpacity: number | null = null;
   let currentKind: ChartZone["kind"] | null = null;
+  const startIndex = Math.max(200, dataCandles.length - 180);
 
   const pushSegment = (startIndex: number, endIndex: number, kind: ChartZone["kind"], opacity: number) => {
     const startTime = dataCandles[startIndex]?.time;
@@ -460,7 +461,7 @@ function updateChartZones() {
     });
   };
 
-  for (let i = 200; i < dataCandles.length; i += 1) {
+  for (let i = startIndex; i < dataCandles.length; i += 1) {
     const candle = dataCandles[i];
     const price = candle.close;
     const openPrice = candle.open;
@@ -482,7 +483,7 @@ function updateChartZones() {
     const pullbackTouched = candle.low <= entryLine * 1.002 && price < entryLine;
     const reclaim = price > entryLine && price > openPrice;
     const setupActive = pullbackTouched || reclaim;
-    const opacity = setupActive ? 0.58 : 0.28;
+    const opacity = setupActive ? 0.72 : 0.44;
     const kind: ChartZone["kind"] = setupActive ? "setup" : "regime";
 
     if (currentOpacity == null) {
