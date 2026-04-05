@@ -516,7 +516,7 @@ def get_top_backtest_evaluations(limit: int = 5) -> list[dict[str, Any]]:
             FROM backtest_evaluations e
             JOIN strategy_versions v ON v.id = e.version_id
             JOIN backtest_bundles b ON b.id = e.bundle_id
-            WHERE e.run_kind IN ('single', 'base')
+            WHERE e.total_trades > 0
             ORDER BY e.score DESC, e.total_return_pct DESC, e.created_at DESC
             LIMIT ?
             """,

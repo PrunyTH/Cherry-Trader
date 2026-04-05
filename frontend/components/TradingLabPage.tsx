@@ -1191,14 +1191,14 @@ export function TradingLabPage() {
             <div className="panel-head">
               <div>
                 <h3>Strategy History</h3>
-                <div className="table-note">Top five persisted runs ranked by the robustness score stored in the database.</div>
+                <div className="table-note">Top five persisted evaluated combinations ranked by the robustness score stored in the database.</div>
               </div>
               <button className="button chart-toggle secondary" onClick={() => void loadAdminRuns()}>
                 Refresh
               </button>
             </div>
             <div className="table-note">
-              Database: backend/data/cherry-trader.sqlite3. Each row links back to the exact git commit used for that run.
+              Database: backend/data/cherry-trader.sqlite3. Each row links back to the exact git commit and saved bundle used for that evaluation.
             </div>
             {adminError ? <div className="error-banner">Admin load failed: {adminError}</div> : null}
             {adminBusy ? <div className="pill">Loading saved runs...</div> : null}
@@ -1317,6 +1317,7 @@ function AdminRunsTable({ runs }: { runs: AdminBacktestRun[] }) {
           <tr>
             <th>When</th>
             <th>Strategy</th>
+            <th>Type</th>
             <th>Commit</th>
             <th>Frame</th>
             <th>History</th>
@@ -1336,6 +1337,7 @@ function AdminRunsTable({ runs }: { runs: AdminBacktestRun[] }) {
                 <div className="admin-strategy-name">{run.strategy_label}</div>
                 <div className="admin-strategy-meta">{run.strategy_name}</div>
               </td>
+              <td>{run.run_kind}</td>
               <td className="mono-cell">{run.git_commit}</td>
               <td>
                 <span className="trade-chip time-frame">{run.interval}</span>
