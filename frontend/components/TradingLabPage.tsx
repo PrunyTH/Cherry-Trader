@@ -120,7 +120,7 @@ type AnalysisHeatmapCell = {
 const SYMBOL = process.env.NEXT_PUBLIC_DEFAULT_SYMBOL ?? "BTCUSDT";
 const DEFAULT_INTERVAL = process.env.NEXT_PUBLIC_DEFAULT_INTERVAL ?? "1w";
 const TIMEFRAMES = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w", "1M"];
-const CHART_TIMEFRAMES = ["15m", "1h", "4h", "1d", "1w", "1M"];
+const CHART_TIMEFRAMES = ["1m", "15m", "1h", "4h", "1d", "1w", "1M"];
 const HISTORY_OPTIONS: Array<{ value: HistoryRange; label: string }> = [
   { value: "1D", label: "1 day" },
   { value: "1M", label: "1 month" },
@@ -320,8 +320,10 @@ function intervalToMinutes(interval: string) {
 }
 
 function chartCandleLimitFor(interval: string, historyDays: number) {
-  const required = Math.ceil((historyDays * 24 * 60) / intervalToMinutes(interval)) + 1500;
-  return Math.min(Math.max(required, 2500), 250000);
+  const cappedHistoryDays = interval === "1m" ? Math.min(historyDays, 180) : historyDays;
+  const required = Math.ceil((cappedHistoryDays * 24 * 60) / intervalToMinutes(interval)) + 1500;
+  const maxBars = interval === "1m" ? 262_800 : 250_000;
+  return Math.min(Math.max(required, 2500), maxBars);
 }
 
 function clamp(value: number, min: number, max: number) {
