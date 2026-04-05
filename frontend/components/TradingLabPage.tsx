@@ -274,7 +274,6 @@ export function TradingLabPage() {
   const [cherryPins, setCherryPins] = useState<CherryPin[]>([]);
   const [chartZones, setChartZones] = useState<ChartZone[]>([]);
   const [chartHover, setChartHover] = useState<ChartHoverSnapshot | null>(null);
-  const [lastSignal, setLastSignal] = useState<string>("none");
   const [chartZoomed, setChartZoomed] = useState(false);
   const chartAutoFitRef = useRef(true);
   const chartLatestViewRef = useRef(false);
@@ -735,7 +734,6 @@ export function TradingLabPage() {
             : payload.signal.reason.startsWith("trend_exit")
               ? "SELL"
               : "BUY";
-          setLastSignal(`${signalLabel} @ ${formatNumber(payload.signal.price)}`);
           setMarkers((current) => [...current, ...signalToMarkers(payload.signal)]);
         }
       };
@@ -1118,10 +1116,6 @@ export function TradingLabPage() {
                     <span className="chart-status-progress-bar" />
                   </span>
                 ) : null}
-              </div>
-              <div className="chart-status-pill">
-                <span className="chart-status-text">Last signal: {lastSignal}</span>
-                <span className="chart-status-help">Latest strategy event from the backend for the selected chart timeframe.</span>
               </div>
             </div>
             {chartZoomed ? (
