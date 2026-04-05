@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,6 +17,22 @@ def _ema(values: list[float], period: int) -> list[float]:
     return output
 
 
+def _sma(values: list[float], period: int) -> list[float]:
+    if not values:
+        return []
+    output: list[float] = []
+    rolling_sum = 0.0
+    for index, value in enumerate(values):
+        rolling_sum += value
+        if index >= period:
+            rolling_sum -= values[index - period]
+        if index + 1 < period:
+            output.append(value)
+        else:
+            output.append(rolling_sum / period)
+    return output
+
+
 def _atr(highs: list[float], lows: list[float], closes: list[float], period: int) -> list[float]:
     if not highs:
         return []
@@ -29,6 +46,23 @@ def _atr(highs: list[float], lows: list[float], closes: list[float], period: int
             )
     )
     return _ema(true_ranges, period)
+
+
+def _bollinger_bands(values: list[float], period: int = 20, stddev_mult: float = 2.0) -> tuple[list[float], list[float], list[float]]:
+    if not values:
+        return [], [], []
+    middle = _sma(values, period)
+    upper: list[float] = []
+    lower: list[float] = []
+    for index, _ in enumerate(values):
+        start = max(0, index - period + 1)
+        window = values[start : index + 1]
+        mean = middle[index]
+        variance = sum((entry - mean) ** 2 for entry in window) / max(1, len(window))
+        deviation = math.sqrt(variance)
+        upper.append(mean + deviation * stddev_mult)
+        lower.append(mean - deviation * stddev_mult)
+    return middle, upper, lower
 
 
 def _is_bullish_hammer(open_price: float, high_price: float, low_price: float, close_price: float) -> bool:
@@ -79,6 +113,9 @@ def run_trend_pullback_backtest(
     capital: float,
     leverage: float,
     stop_loss_atr_mult: float = 1.5,
+    bollinger_enabled: bool = False,
+    bollinger_period: int = 20,
+    bollinger_stddev: float = 2.0,
     evaluation_start_time: int | None = None,
     fee_rate: float = BINANCE_TAKER_FEE_RATE,
 ) -> BacktestResult:
@@ -96,6 +133,7 @@ def run_trend_pullback_backtest(
     trend_ema = _ema(closes, 50)
     filter_ema = _ema(closes, 200)
     atr = _atr(highs, lows, closes, 14)
+    bollinger_middle, _, _ = _bollinger_bands(closes, bollinger_period, bollinger_stddev)
 
     equity = capital
     peak_equity = capital
@@ -117,6 +155,7 @@ def run_trend_pullback_backtest(
         entry_line = entry_ema[i]
         trend_line = trend_ema[i]
         filter_line = filter_ema[i]
+        bollinger_line = bollinger_middle[i]
         open_price = opens[i]
         volume_ok = _volume_confirmed(volumes, i)
         hammer_ok = _is_bullish_hammer(opens[i], highs[i], lows[i], closes[i]) or _is_bullish_engulfing(
@@ -125,6 +164,7 @@ def run_trend_pullback_backtest(
             open_price,
             price,
         )
+        bollinger_ok = (not bollinger_enabled) or price >= bollinger_line
         atr_value = atr[i] if atr else 0.0
         stop_triggered = False
         stop_price = None
@@ -132,9 +172,9 @@ def run_trend_pullback_backtest(
             stop_price = position.get("stop_price")
             stop_triggered = stop_price is not None and lows[i] <= stop_price
 
-        trend_up = trend_line > filter_line and price > trend_line and trend_line >= trend_ema[max(0, i - 3)]
+        trend_up = trend_line > filter_line and price > trend_line and trend_line >= trend_ema[max(0, i - 3)] and bollinger_ok
         pullback_touched = lows[i] <= entry_line * 1.002
-        reclaim = price > entry_line and price > open_price
+        reclaim = price > entry_line and price > open_price and bollinger_ok
         exit_long = price < entry_line or price < trend_line or trend_line < filter_line
         exit_price = price
 

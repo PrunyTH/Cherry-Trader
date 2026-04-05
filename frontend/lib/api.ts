@@ -106,6 +106,11 @@ export type BacktestBundleResponse = {
     stopLossAtrMult: number;
     stats: BacktestStats;
   }>;
+  bollinger_heatmap_cells: Array<{
+    interval: string;
+    bollingerEnabled: boolean;
+    stats: BacktestStats;
+  }>;
   analysis_heatmap_cells: Array<{
     interval: string;
     historyRange: string;
@@ -275,6 +280,26 @@ function scoreBacktestStats(stats: {
   );
 }
 
+function bollingerBands(values: number[], period = 20, stddevMult = 2) {
+  if (!values.length) {
+    return { middle: [], upper: [], lower: [] };
+  }
+  const middle: number[] = [];
+  const upper: number[] = [];
+  const lower: number[] = [];
+  for (let i = 0; i < values.length; i += 1) {
+    const start = Math.max(0, i - period + 1);
+    const window = values.slice(start, i + 1);
+    const mean = window.reduce((sum, value) => sum + value, 0) / window.length;
+    const variance = window.reduce((sum, value) => sum + (value - mean) ** 2, 0) / window.length;
+    const deviation = Math.sqrt(variance);
+    middle.push(mean);
+    upper.push(mean + deviation * stddevMult);
+    lower.push(mean - deviation * stddevMult);
+  }
+  return { middle, upper, lower };
+}
+
 const BINANCE_TAKER_FEE_RATE = 0.0005;
 
 function runTrendPullbackBacktestLocal(
@@ -283,6 +308,7 @@ function runTrendPullbackBacktestLocal(
   leverage: number,
   stopLossAtrMult: number,
   lookbackDays: number,
+  bollingerEnabled = false,
 ): BacktestResponse {
   const closed = candles.filter((candle) => candle.is_closed);
   if (closed.length < 220) {
@@ -313,6 +339,7 @@ function runTrendPullbackBacktestLocal(
   const trendEma = ema(closes, 50);
   const filterEma = ema(closes, 200);
   const atrValues = atr(highs, lows, closes, 14);
+  const bollinger = bollingerBands(closes, 20, 2);
   const latestCloseTime = closed[closed.length - 1]?.close_time ?? 0;
   const evaluationStartTime = latestCloseTime - lookbackDays * 24 * 60 * 60 * 1000;
 
@@ -347,10 +374,12 @@ function runTrendPullbackBacktestLocal(
     const trendLine = trendEma[i];
     const filterLine = filterEma[i];
     const openPrice = opens[i];
+    const bollingerLine = bollinger.middle[i];
 
-    const trendUp = trendLine > filterLine && price > trendLine && trendLine >= trendEma[Math.max(0, i - 3)];
+    const bollingerOk = !bollingerEnabled || price >= bollingerLine;
+    const trendUp = trendLine > filterLine && price > trendLine && trendLine >= trendEma[Math.max(0, i - 3)] && bollingerOk;
     const pullbackTouched = lows[i] <= entryLine * 1.002;
-    const reclaim = price > entryLine && price > openPrice;
+    const reclaim = price > entryLine && price > openPrice && bollingerOk;
     const exitLong = price < entryLine || price < trendLine || trendLine < filterLine;
     const atrValue = atrValues[i] ?? 0;
     const stopPrice = position?.stop_price ?? null;
@@ -561,6 +590,7 @@ export async function runBacktest(
   capital: number,
   leverage: number,
   stop_loss_atr_mult = 1.5,
+  bollinger_enabled = false,
 ) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 60_000);
@@ -568,7 +598,7 @@ export async function runBacktest(
     const response = await fetch(`${BACKEND_URL}/api/backtest`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbol, interval, lookback_days, capital, leverage, stop_loss_atr_mult }),
+      body: JSON.stringify({ symbol, interval, lookback_days, capital, leverage, stop_loss_atr_mult, bollinger_enabled }),
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -592,6 +622,7 @@ export async function runBacktestBundle(
   capital: number,
   leverage: number,
   stop_loss_atr_mult = 1.5,
+  bollinger_enabled = false,
   comparison_intervals: string[] = ["15m", "1h", "4h", "1d", "1w", "1M"],
   stop_multipliers: number[] = [0.75, 1.0, 1.5, 2.0, 2.5, 3.0],
   analysis_ranges: string[] = ["1D", "1M", "3M", "6M", "1Y", "2Y", "ALL"],
@@ -609,6 +640,7 @@ export async function runBacktestBundle(
         capital,
         leverage,
         stop_loss_atr_mult,
+        bollinger_enabled,
         comparison_intervals,
         stop_multipliers,
         analysis_ranges,

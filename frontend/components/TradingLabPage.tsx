@@ -55,6 +55,12 @@ type ChartHoverSnapshot = {
   volumeUsdt: number;
 };
 
+type BollingerBandSet = {
+  middle: LineData[];
+  upper: LineData[];
+  lower: LineData[];
+};
+
 type ChartZone = {
   left: number;
   width: number;
@@ -118,6 +124,20 @@ type AnalysisHeatmapCell = {
   };
 };
 
+type BollingerHeatmapCell = {
+  interval: string;
+  bollingerEnabled: boolean;
+  stats: {
+    total_return_pct: number;
+    final_equity: number;
+    total_trades: number;
+    win_rate: number;
+    total_fees: number;
+    max_drawdown: number;
+    score: number;
+  };
+};
+
 const SYMBOL = process.env.NEXT_PUBLIC_DEFAULT_SYMBOL ?? "BTCUSDT";
 const DEFAULT_INTERVAL = process.env.NEXT_PUBLIC_DEFAULT_INTERVAL ?? "1w";
 const TIMEFRAMES = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w", "1M"];
@@ -133,7 +153,7 @@ const HISTORY_OPTIONS: Array<{ value: HistoryRange; label: string }> = [
 ];
 const COMPARISON_INTERVALS = ["15m", "1h", "4h", "1d", "1w", "1M"];
 const STOP_MULTIPLIERS = [0.75, 1, 1.5, 2, 2.5, 3];
-const STRATEGY_NAME = "Trend Pullback v2";
+const STRATEGY_NAME = "Trend Pullback v3";
 const BINANCE_TAKER_FEE_RATE = 0.0005;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -205,6 +225,30 @@ function emaSeries(candles: CandlestickData[], period: number): LineData[] {
     time: candle.time,
     value: emaValues[index],
   }));
+}
+
+function bollingerBandsSeries(candles: CandlestickData[], period = 20, stddevMult = 2): BollingerBandSet {
+  if (!candles.length) {
+    return { middle: [], upper: [], lower: [] };
+  }
+
+  const closes = candles.map((candle) => candle.close);
+  const middle: LineData[] = [];
+  const upper: LineData[] = [];
+  const lower: LineData[] = [];
+
+  for (let i = 0; i < closes.length; i += 1) {
+    const start = Math.max(0, i - period + 1);
+    const window = closes.slice(start, i + 1);
+    const mean = window.reduce((sum, value) => sum + value, 0) / window.length;
+    const variance = window.reduce((sum, value) => sum + (value - mean) ** 2, 0) / window.length;
+    const deviation = Math.sqrt(variance);
+    middle.push({ time: candles[i].time, value: mean });
+    upper.push({ time: candles[i].time, value: mean + deviation * stddevMult });
+    lower.push({ time: candles[i].time, value: mean - deviation * stddevMult });
+  }
+
+  return { middle, upper, lower };
 }
 
 function volumeSeries(candles: Candle[]) {
@@ -362,6 +406,8 @@ export function TradingLabPage() {
   const [stopBusy, setStopBusy] = useState(false);
   const [heatmapCells, setHeatmapCells] = useState<HeatmapCell[]>([]);
   const [heatmapBusy, setHeatmapBusy] = useState(false);
+  const [bollingerHeatmapCells, setBollingerHeatmapCells] = useState<BollingerHeatmapCell[]>([]);
+  const [bollingerBusy, setBollingerBusy] = useState(false);
   const [analysisHeatmapCells, setAnalysisHeatmapCells] = useState<AnalysisHeatmapCell[]>([]);
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [progressStage, setProgressStage] = useState<"idle" | "loading" | "backtest" | "compare" | "stops" | "done">("idle");
@@ -371,6 +417,8 @@ export function TradingLabPage() {
   const [chartHover, setChartHover] = useState<ChartHoverSnapshot | null>(null);
   const [chartZoomed, setChartZoomed] = useState(false);
   const [showHeikinAshi, setShowHeikinAshi] = useState(false);
+  const [showBollingerBands, setShowBollingerBands] = useState(false);
+  const [bollingerFilterEnabled, setBollingerFilterEnabled] = useState(false);
   const [showRegimeOverlay, setShowRegimeOverlay] = useState(true);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [adminRuns, setAdminRuns] = useState<AdminBacktestRun[]>([]);
@@ -386,6 +434,9 @@ export function TradingLabPage() {
   const ema20Api = useRef<ISeriesApi<"Line"> | null>(null);
   const ema50Api = useRef<ISeriesApi<"Line"> | null>(null);
   const ema200Api = useRef<ISeriesApi<"Line"> | null>(null);
+  const bollingerUpperApi = useRef<ISeriesApi<"Line"> | null>(null);
+  const bollingerMiddleApi = useRef<ISeriesApi<"Line"> | null>(null);
+  const bollingerLowerApi = useRef<ISeriesApi<"Line"> | null>(null);
   const volumeApi = useRef<ISeriesApi<"Histogram"> | null>(null);
   const heikinAshiApi = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const chartDataRef = useRef<{
@@ -396,6 +447,7 @@ export function TradingLabPage() {
     ema20: LineData[];
     ema50: LineData[];
     ema200: LineData[];
+    bollinger: BollingerBandSet;
   }>({
     candles: [],
     rawCandles: [],
@@ -404,6 +456,7 @@ export function TradingLabPage() {
     ema20: [],
     ema50: [],
     ema200: [],
+    bollinger: { middle: [], upper: [], lower: [] },
   });
   const chartHoverTimeRef = useRef<number | null>(null);
   const chartPaneCellRef = useRef<HTMLDivElement | null>(null);
@@ -571,6 +624,7 @@ function updateChartZones() {
     const ema20 = emaSeries(candleData, 20);
     const ema50 = emaSeries(candleData, 50);
     const ema200 = emaSeries(candleData, 200);
+    const bollinger = bollingerBandsSeries(candleData, 20, 2);
     const volume = volumeSeries(rawCandleData);
     const heikinAshi = heikinAshiSeries(candleData);
     chartDataRef.current = {
@@ -581,6 +635,7 @@ function updateChartZones() {
       ema20,
       ema50,
       ema200,
+      bollinger,
     };
     seriesApi.current.setData(candleData);
     if (heikinAshiApi.current) {
@@ -589,6 +644,9 @@ function updateChartZones() {
     ema20Api.current?.setData(ema20);
     ema50Api.current?.setData(ema50);
     ema200Api.current?.setData(ema200);
+    bollingerUpperApi.current?.setData(showBollingerBands ? bollinger.upper : []);
+    bollingerMiddleApi.current?.setData(showBollingerBands ? bollinger.middle : []);
+    bollingerLowerApi.current?.setData(showBollingerBands ? bollinger.lower : []);
     volumeApi.current?.setData(volume);
     chartApi.current.applyOptions({
       localization: { priceFormatter: (price: number) => formatNumber(price) },
@@ -615,6 +673,16 @@ function updateChartZones() {
     }
     heikinAshiApi.current.setData(showHeikinAshi ? chartDataRef.current.heikinAshi : []);
   }, [showHeikinAshi]);
+
+  useEffect(() => {
+    if (!bollingerMiddleApi.current || !bollingerUpperApi.current || !bollingerLowerApi.current || !chartDataRef.current.candles.length) {
+      return;
+    }
+    const { bollinger } = chartDataRef.current;
+    bollingerUpperApi.current.setData(showBollingerBands ? bollinger.upper : []);
+    bollingerMiddleApi.current.setData(showBollingerBands ? bollinger.middle : []);
+    bollingerLowerApi.current.setData(showBollingerBands ? bollinger.lower : []);
+  }, [showBollingerBands]);
 
   useEffect(() => {
     const loadSeq = chartLoadSeqRef.current + 1;
@@ -776,7 +844,25 @@ function updateChartZones() {
       priceLineVisible: false,
       lastValueVisible: false,
     });
-    const volume = chart.addHistogramSeries({
+    const bollingerUpper = chart.addLineSeries({
+      color: "rgba(37, 99, 235, 0.34)",
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    const bollingerMiddle = chart.addLineSeries({
+      color: "rgba(37, 99, 235, 0.70)",
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    const bollingerLower = chart.addLineSeries({
+      color: "rgba(37, 99, 235, 0.34)",
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    const volume = volumeChart.addHistogramSeries({
       priceScaleId: "",
       priceFormat: {
         type: "volume",
@@ -798,6 +884,9 @@ function updateChartZones() {
     ema20Api.current = ema20;
     ema50Api.current = ema50;
     ema200Api.current = ema200;
+    bollingerUpperApi.current = bollingerUpper;
+    bollingerMiddleApi.current = bollingerMiddle;
+    bollingerLowerApi.current = bollingerLower;
     volumeApi.current = volume;
     heikinAshiApi.current = heikinAshi;
     updateCherryPins();
@@ -942,6 +1031,9 @@ function updateChartZones() {
       ema20Api.current = null;
       ema50Api.current = null;
       ema200Api.current = null;
+      bollingerUpperApi.current = null;
+      bollingerMiddleApi.current = null;
+      bollingerLowerApi.current = null;
       volumeApi.current = null;
       chartPaneCellRef.current = null;
     };
@@ -1025,6 +1117,7 @@ function updateChartZones() {
       setComparisonBusy(true);
       setStopBusy(true);
       setHeatmapBusy(true);
+      setBollingerBusy(true);
       setAnalysisBusy(true);
       const result = await runBacktestBundle(
         SYMBOL,
@@ -1032,6 +1125,8 @@ function updateChartZones() {
         lookbackDays,
         capital,
         leverage,
+        1.5,
+        bollingerFilterEnabled,
       );
       setProgressStage("backtest");
       setProgressPct(70);
@@ -1049,6 +1144,7 @@ function updateChartZones() {
       setComparisonRows(result.comparison_rows ?? []);
       setStopRows(result.stop_rows ?? []);
       setHeatmapCells(result.heatmap_cells ?? []);
+      setBollingerHeatmapCells(result.bollinger_heatmap_cells ?? []);
       setAnalysisHeatmapCells(
         (result.analysis_heatmap_cells ?? []).map((cell) => ({
           ...cell,
@@ -1064,6 +1160,7 @@ function updateChartZones() {
       setComparisonBusy(false);
       setStopBusy(false);
       setHeatmapBusy(false);
+      setBollingerBusy(false);
       setAnalysisBusy(false);
       window.setTimeout(() => {
         setProgressStage("idle");
@@ -1162,17 +1259,17 @@ function updateChartZones() {
   return (
     <div className={`app-shell ${chartMaximized ? "maximized" : ""}`}>
       <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true">
-            <img className="logo-image" src="/icon.png" alt="" />
+          <div className="brand">
+            <div className="brand-mark" aria-hidden="true">
+              <img className="logo-image" src="/icon.png" alt="" />
+            </div>
+            <div>
+              <h1 className="title">Cherry Trader</h1>
+              <p className="muted">
+              {STRATEGY_NAME}. Long-only trend pullback with setup, volume, candle-confirmation, and optional Bollinger markers.
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="title">Cherry Trader</h1>
-            <p className="muted">
-              {STRATEGY_NAME}. Long-only trend pullback with setup, volume, and candle-confirmation markers.
-            </p>
-          </div>
-        </div>
 
         <div className="section stack">
           <div className="field">
@@ -1218,6 +1315,14 @@ function updateChartZones() {
               onBlur={() => setLeverageInput(sanitizeLeverage(leverageInput).toFixed(1))}
             />
           </div>
+          <label className="toggle-field">
+            <input
+              type="checkbox"
+              checked={bollingerFilterEnabled}
+              onChange={(event) => setBollingerFilterEnabled(event.target.checked)}
+            />
+            <span>Bollinger filter</span>
+          </label>
             <button className="button secondary" onClick={onRunBacktest}>Run backtest</button>
           {progressStage !== "idle" ? (
             <div className="backtest-progress" aria-label="Backtest progress">
@@ -1243,6 +1348,7 @@ function updateChartZones() {
               <li>Pullback: price trades back down into the 20 EMA area after being above it.</li>
               <li>Reclaim: the candle closes back above the 20 EMA after that pullback.</li>
               <li>Entry: reclaim candle must be bullish, with volume above recent average and hammer / engulfing confirmation.</li>
+              <li>Optional Bollinger filter: when enabled, reclaim also needs to stay above the 20-period middle band.</li>
               <li>Risk: ATR stop, one position at a time, long-only for now.</li>
               <li>Fees: Binance taker-style commission is deducted on entry and exit.</li>
             </ul>
@@ -1286,6 +1392,13 @@ function updateChartZones() {
                 onClick={() => setShowHeikinAshi((current) => !current)}
               >
                 Heikin-Ashi {showHeikinAshi ? "on" : "off"}
+              </button>
+              <button
+                type="button"
+                className={`legend-item legend-toggle ${showBollingerBands ? "active" : ""}`}
+                onClick={() => setShowBollingerBands((current) => !current)}
+              >
+                Bollinger {showBollingerBands ? "on" : "off"}
               </button>
               <button
                 type="button"
@@ -1429,6 +1542,14 @@ function updateChartZones() {
             <span className="pill">{heatmapBusy ? "running..." : `${heatmapCells.length} combos`}</span>
           </div>
           <HeatmapTable cells={heatmapCells} activeInterval={backtestInterval} activeStop={1.5} />
+        </section>
+        <section className="panel comparison-panel heatmap-panel">
+          <div className="panel-head">
+            <h3>Bollinger Impact</h3>
+            <span className="pill">{bollingerBusy ? "running..." : `${bollingerHeatmapCells.length} combos`}</span>
+          </div>
+          <div className="table-note">Compare the strategy with Bollinger bands off versus on using the current chart timeframe and analysis window.</div>
+          <BollingerHeatmapTable cells={bollingerHeatmapCells} activeInterval={backtestInterval} activeEnabled={bollingerFilterEnabled} />
         </section>
         <section className="panel comparison-panel heatmap-panel">
           <div className="panel-head">
@@ -1925,6 +2046,80 @@ function HeatmapTable({
                     }}
                   >
                     <div className="heat-value">{formatNumber(cell.stats.total_return_pct)}%</div>
+                    <div className="heat-meta">{formatNumber(cell.stats.final_equity)} USDT</div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function BollingerHeatmapTable({
+  cells,
+  activeInterval,
+  activeEnabled,
+}: {
+  cells: BollingerHeatmapCell[];
+  activeInterval: string;
+  activeEnabled: boolean;
+}) {
+  if (!cells.length) {
+    return <div className="empty-state">Run a backtest to compare Bollinger filter results.</div>;
+  }
+
+  const rows = COMPARISON_INTERVALS;
+  const cols = [false, true];
+  const cellMap = new Map(cells.map((cell) => [`${cell.interval}:${cell.bollingerEnabled}`, cell]));
+  const values = cells.map((cell) => cell.stats.score);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+
+  function intensity(value: number) {
+    const normalized = (value - min) / span;
+    return 0.12 + normalized * 0.3;
+  }
+
+  return (
+    <div className="trade-table-wrap heatmap-wrap">
+      <table className="trade-table heatmap-table">
+        <thead>
+          <tr>
+            <th>Timeframe</th>
+            <th>Off</th>
+            <th>On</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((intervalRow) => (
+            <tr key={intervalRow} className={intervalRow === activeInterval ? "active-row" : ""}>
+              <td>
+                <span className="trade-chip time-frame">{intervalRow}</span>
+              </td>
+              {cols.map((enabled) => {
+                const cell = cellMap.get(`${intervalRow}:${enabled}`);
+                if (!cell) {
+                  return <td key={`${intervalRow}-${enabled}`} className="heat-empty">-</td>;
+                }
+                const active = intervalRow === activeInterval && enabled === activeEnabled;
+                const backgroundOpacity = intensity(cell.stats.score);
+                return (
+                  <td
+                    key={`${intervalRow}-${enabled}`}
+                    className={`${cell.stats.score >= 50 ? "heat-cell gain" : cell.stats.score >= 35 ? "heat-cell neutral" : "heat-cell loss"} ${active ? "active-cell" : ""}`}
+                    style={{
+                      backgroundColor:
+                        cell.stats.score >= 0
+                          ? `rgba(37, 99, 235, ${backgroundOpacity})`
+                          : `rgba(215, 38, 61, ${backgroundOpacity})`,
+                    }}
+                  >
+                    <div className="heat-value">{enabled ? "On" : "Off"}</div>
+                    <div className="heat-meta">{formatNumber(cell.stats.score)}</div>
                     <div className="heat-meta">{formatNumber(cell.stats.final_equity)} USDT</div>
                   </td>
                 );

@@ -45,13 +45,18 @@ logger = logging.getLogger(__name__)
 repair_jobs_lock = threading.Lock()
 repair_jobs: set[tuple[str, str]] = set()
 REPO_ROOT = Path(__file__).resolve().parents[2]
-STRATEGY_NAME = "trend_pullback_v2"
-STRATEGY_LABEL = "Trend Pullback v2"
+STRATEGY_NAME = "trend_pullback_v3"
+STRATEGY_LABEL = "Trend Pullback v3"
 STRATEGY_VERSION_PARAMS = {
     "entry_ema_period": 20,
     "trend_ema_period": 50,
     "filter_ema_period": 200,
     "atr_period": 14,
+    "bollinger_filter": {
+        "enabled": False,
+        "period": 20,
+        "stddev": 2.0,
+    },
     "direction": "long_only",
     "entry_confirmation": [
         "bullish_reclaim_candle",
@@ -271,6 +276,27 @@ def evaluation_payload(request_data: dict[str, object], history_range: str, stop
     return json.dumps(payload, sort_keys=True)
 
 
+def evaluation_payload_with_bollinger(
+    request_data: dict[str, object],
+    history_range: str,
+    stop_loss_atr_mult: float,
+    bollinger_enabled: bool,
+    run_kind: str,
+) -> str:
+    payload = dict(request_data)
+    payload.update(
+        {
+            "strategy_name": STRATEGY_NAME,
+            "strategy_label": STRATEGY_LABEL,
+            "history_range": history_range,
+            "stop_loss_atr_mult": stop_loss_atr_mult,
+            "bollinger_enabled": bollinger_enabled,
+            "run_kind": run_kind,
+        }
+    )
+    return json.dumps(payload, sort_keys=True)
+
+
 def persist_strategy_version() -> tuple[int, str, int]:
     created_at = int(time.time() * 1000)
     git_commit = get_git_commit()
@@ -443,6 +469,7 @@ def api_backtest(request: BacktestRequest):
         request.capital,
         request.leverage,
         request.stop_loss_atr_mult,
+        request.bollinger_enabled,
         evaluation_start_time,
     )
     bundle_id = persist_backtest_bundle(
@@ -466,6 +493,7 @@ def api_backtest(request: BacktestRequest):
                 "interval": request.interval,
                 "history_range": history_range,
                 "stop_loss_atr_mult": request.stop_loss_atr_mult,
+                "bollinger_enabled": request.bollinger_enabled,
                 "run_kind": "single",
                 "stats": backtest_stats(result),
             }
@@ -485,6 +513,7 @@ def api_backtest(request: BacktestRequest):
                 "git_commit": git_commit,
                 "history_range": history_range,
                 "stop_loss_atr_mult": request.stop_loss_atr_mult,
+                "bollinger_enabled": request.bollinger_enabled,
             },
             sort_keys=True,
         ),
@@ -533,7 +562,7 @@ def api_backtest_bundle(request: BacktestBundleRequest):
     selected_range_label = history_range_for_days(request.lookback_days)
     analysis_ranges = list(dict.fromkeys([selected_range_label, *request.analysis_ranges]))
     intervals = list(dict.fromkeys([request.interval, *comparison_intervals]))
-    result_cache: dict[tuple[str, str, float], Any] = {}
+    result_cache: dict[tuple[str, str, float, bool], Any] = {}
     selected_stop = float(request.stop_loss_atr_mult)
     stop_values = list(dict.fromkeys([selected_stop, *[float(multiplier) for multiplier in stop_multipliers]]))
     version_id, git_commit, _ = persist_strategy_version()
@@ -542,11 +571,14 @@ def api_backtest_bundle(request: BacktestBundleRequest):
         candles = get_all_closed_candles(request.symbol, interval)
         selected_candles, selected_evaluation_start_time = prepare_backtest_candles(candles, request.lookback_days)
         for multiplier in stop_values:
-            result_cache[(interval, selected_range_label, multiplier)] = run_trend_pullback_backtest(
+            result_cache[(interval, selected_range_label, multiplier, request.bollinger_enabled)] = run_trend_pullback_backtest(
                 selected_candles,
                 request.capital,
                 request.leverage,
                 multiplier,
+                request.bollinger_enabled,
+                20,
+                2.0,
                 selected_evaluation_start_time,
             )
 
@@ -554,11 +586,14 @@ def api_backtest_bundle(request: BacktestBundleRequest):
             if range_label == selected_range_label:
                 continue
             candles_for_range, evaluation_start_time = prepare_backtest_candles(candles, history_days_for_range(range_label))
-            result_cache[(interval, range_label, selected_stop)] = run_trend_pullback_backtest(
+            result_cache[(interval, range_label, selected_stop, request.bollinger_enabled)] = run_trend_pullback_backtest(
                 candles_for_range,
                 request.capital,
                 request.leverage,
                 selected_stop,
+                request.bollinger_enabled,
+                20,
+                2.0,
                 evaluation_start_time,
             )
 
@@ -578,7 +613,7 @@ def api_backtest_bundle(request: BacktestBundleRequest):
     evaluation_entries: list[dict[str, object]] = []
     for interval in intervals:
         for multiplier in stop_values:
-            stats = backtest_stats(result_cache[(interval, selected_range_label, multiplier)])
+            stats = backtest_stats(result_cache[(interval, selected_range_label, multiplier, request.bollinger_enabled)])
             if interval == request.interval and multiplier == selected_stop:
                 run_kind = "base"
             elif interval == request.interval:
@@ -592,6 +627,7 @@ def api_backtest_bundle(request: BacktestBundleRequest):
                     "interval": interval,
                     "history_range": selected_range_label,
                     "stop_loss_atr_mult": multiplier,
+                    "bollinger_enabled": request.bollinger_enabled,
                     "run_kind": run_kind,
                     "stats": stats,
                 }
@@ -600,20 +636,57 @@ def api_backtest_bundle(request: BacktestBundleRequest):
         for range_label in analysis_ranges:
             if range_label == selected_range_label:
                 continue
-            stats = backtest_stats(result_cache[(interval, range_label, selected_stop)])
+            stats = backtest_stats(result_cache[(interval, range_label, selected_stop, request.bollinger_enabled)])
             evaluation_entries.append(
                 {
                     "interval": interval,
                     "history_range": range_label,
                     "stop_loss_atr_mult": selected_stop,
+                    "bollinger_enabled": request.bollinger_enabled,
                     "run_kind": "analysis" if interval == request.interval else "analysis_heatmap",
+                    "stats": stats,
+                }
+            )
+
+    bollinger_heatmap_cells = []
+    for interval in intervals:
+        for bollinger_enabled in (False, True):
+            key = (interval, selected_range_label, selected_stop, bollinger_enabled)
+            if key not in result_cache:
+                candles = get_all_closed_candles(request.symbol, interval)
+                selected_candles, selected_evaluation_start_time = prepare_backtest_candles(candles, request.lookback_days)
+                result_cache[key] = run_trend_pullback_backtest(
+                    selected_candles,
+                    request.capital,
+                    request.leverage,
+                    selected_stop,
+                    bollinger_enabled,
+                    20,
+                    2.0,
+                    selected_evaluation_start_time,
+                )
+            stats = backtest_stats(result_cache[key])
+            bollinger_heatmap_cells.append(
+                {
+                    "interval": interval,
+                    "bollingerEnabled": bollinger_enabled,
+                    "stats": stats,
+                }
+            )
+            evaluation_entries.append(
+                {
+                    "interval": interval,
+                    "history_range": selected_range_label,
+                    "stop_loss_atr_mult": selected_stop,
+                    "bollinger_enabled": bollinger_enabled,
+                    "run_kind": "bollinger_comparison" if interval == request.interval else "bollinger_heatmap",
                     "stats": stats,
                 }
             )
 
     persist_backtest_evaluations(bundle_id, version_id, request_data, evaluation_entries)
 
-    base_result = result_cache[(request.interval, selected_range_label, selected_stop)]
+    base_result = result_cache[(request.interval, selected_range_label, selected_stop, request.bollinger_enabled)]
     started_at = int(time.time() * 1000)
     run_id = create_run(
         request.symbol,
@@ -628,6 +701,7 @@ def api_backtest_bundle(request: BacktestBundleRequest):
                 "git_commit": git_commit,
                 "history_range": selected_range_label,
                 "stop_loss_atr_mult": request.stop_loss_atr_mult,
+                "bollinger_enabled": request.bollinger_enabled,
             },
             sort_keys=True,
         ),
@@ -646,38 +720,38 @@ def api_backtest_bundle(request: BacktestBundleRequest):
     comparison_rows = [
         {
             "interval": interval,
-            "stats": backtest_stats(result_cache[(interval, selected_range_label, selected_stop)]),
+            "stats": backtest_stats(result_cache[(interval, selected_range_label, selected_stop, request.bollinger_enabled)]),
         }
         for interval in comparison_intervals
-        if (interval, selected_range_label, selected_stop) in result_cache
+        if (interval, selected_range_label, selected_stop, request.bollinger_enabled) in result_cache
     ]
     stop_rows = [
         {
             "stopLossAtrMult": multiplier,
-            "stats": backtest_stats(result_cache[(request.interval, selected_range_label, float(multiplier))]),
+            "stats": backtest_stats(result_cache[(request.interval, selected_range_label, float(multiplier), request.bollinger_enabled)]),
         }
         for multiplier in stop_multipliers
-        if (request.interval, selected_range_label, float(multiplier)) in result_cache
+        if (request.interval, selected_range_label, float(multiplier), request.bollinger_enabled) in result_cache
     ]
     heatmap_cells = [
         {
             "interval": interval,
             "stopLossAtrMult": multiplier,
-            "stats": backtest_stats(result_cache[(interval, selected_range_label, float(multiplier))]),
+            "stats": backtest_stats(result_cache[(interval, selected_range_label, float(multiplier), request.bollinger_enabled)]),
         }
         for interval in intervals
         for multiplier in stop_multipliers
-        if (interval, selected_range_label, float(multiplier)) in result_cache
+        if (interval, selected_range_label, float(multiplier), request.bollinger_enabled) in result_cache
     ]
     analysis_heatmap_cells = [
         {
             "interval": interval,
             "historyRange": range_label,
-            "stats": backtest_stats(result_cache[(interval, range_label, selected_stop)]),
+            "stats": backtest_stats(result_cache[(interval, range_label, selected_stop, request.bollinger_enabled)]),
         }
         for interval in intervals
         for range_label in analysis_ranges
-        if (interval, range_label, selected_stop) in result_cache
+        if (interval, range_label, selected_stop, request.bollinger_enabled) in result_cache
     ]
 
     return {
@@ -698,6 +772,7 @@ def api_backtest_bundle(request: BacktestBundleRequest):
         "comparison_rows": comparison_rows,
         "stop_rows": stop_rows,
         "heatmap_cells": heatmap_cells,
+        "bollinger_heatmap_cells": bollinger_heatmap_cells,
         "analysis_heatmap_cells": analysis_heatmap_cells,
     }
 
