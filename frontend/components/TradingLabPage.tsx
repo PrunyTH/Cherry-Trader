@@ -421,11 +421,12 @@ export function TradingLabPage() {
   const [chartZones, setChartZones] = useState<ChartZone[]>([]);
   const [chartHover, setChartHover] = useState<ChartHoverSnapshot | null>(null);
   const [bollingerOverlayPath, setBollingerOverlayPath] = useState<string | null>(null);
+  const [bollingerHoverActive, setBollingerHoverActive] = useState(false);
   const [chartZoomed, setChartZoomed] = useState(false);
   const [showHeikinAshi, setShowHeikinAshi] = useState(false);
-  const [showBollingerBands, setShowBollingerBands] = useState(false);
+  const [showBollingerBands, setShowBollingerBands] = useState(true);
   const [bollingerFilterEnabled, setBollingerFilterEnabled] = useState(false);
-  const [showRegimeOverlay, setShowRegimeOverlay] = useState(true);
+  const [showRegimeOverlay, setShowRegimeOverlay] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [adminRuns, setAdminRuns] = useState<AdminBacktestRun[]>([]);
   const [adminBusy, setAdminBusy] = useState(false);
@@ -541,6 +542,7 @@ export function TradingLabPage() {
     const chart = chartApi.current;
     if (!chart || !showBollingerBands) {
       setBollingerOverlayPath(null);
+      setBollingerHoverActive(false);
       return;
     }
 
@@ -549,42 +551,14 @@ export function TradingLabPage() {
     const lowerSeries = bollingerLowerApi.current;
     if (!dataCandles.length || !upperSeries || !lowerSeries || !bollinger.upper.length || !bollinger.lower.length) {
       setBollingerOverlayPath(null);
-      return;
-    }
-
-    const hoveredTime = chartHoverTimeRef.current;
-    if (hoveredTime == null) {
-      setBollingerOverlayPath(null);
-      return;
-    }
-
-    const hoveredIndex = dataCandles.findIndex((candle) => Number(candle.time) === hoveredTime);
-    if (hoveredIndex < 0) {
-      setBollingerOverlayPath(null);
-      return;
-    }
-
-    const hoveredPoint = chartHoverPointRef.current;
-    const hoveredUpper = bollinger.upper[hoveredIndex]?.value;
-    const hoveredLower = bollinger.lower[hoveredIndex]?.value;
-    const upperY = upperSeries.priceToCoordinate(hoveredUpper ?? 0);
-    const lowerY = lowerSeries.priceToCoordinate(hoveredLower ?? 0);
-    if (
-      hoveredPoint == null ||
-      hoveredUpper == null ||
-      hoveredLower == null ||
-      upperY == null ||
-      lowerY == null ||
-      hoveredPoint.y < Math.min(upperY, lowerY) ||
-      hoveredPoint.y > Math.max(upperY, lowerY)
-    ) {
-      setBollingerOverlayPath(null);
+      setBollingerHoverActive(false);
       return;
     }
 
     const visibleRange = chart.timeScale().getVisibleLogicalRange();
     if (!visibleRange) {
       setBollingerOverlayPath(null);
+      setBollingerHoverActive(false);
       return;
     }
 
@@ -612,6 +586,7 @@ export function TradingLabPage() {
 
     if (lowerPoints.length < 2 || upperPoints.length < 2) {
       setBollingerOverlayPath(null);
+      setBollingerHoverActive(false);
       return;
     }
 
@@ -620,6 +595,23 @@ export function TradingLabPage() {
       .reverse()
       .join(" L ")} Z`;
     setBollingerOverlayPath(path);
+
+    const hoveredTime = chartHoverTimeRef.current;
+    const hoveredIndex = hoveredTime == null ? -1 : dataCandles.findIndex((candle) => Number(candle.time) === hoveredTime);
+    const hoveredPoint = chartHoverPointRef.current;
+    const hoveredUpper = hoveredIndex >= 0 ? bollinger.upper[hoveredIndex]?.value : null;
+    const hoveredLower = hoveredIndex >= 0 ? bollinger.lower[hoveredIndex]?.value : null;
+    const upperY = hoveredUpper == null ? null : upperSeries.priceToCoordinate(hoveredUpper);
+    const lowerY = hoveredLower == null ? null : lowerSeries.priceToCoordinate(hoveredLower);
+    setBollingerHoverActive(
+      hoveredPoint != null &&
+        hoveredUpper != null &&
+        hoveredLower != null &&
+        upperY != null &&
+        lowerY != null &&
+        hoveredPoint.y >= Math.min(upperY, lowerY) &&
+        hoveredPoint.y <= Math.max(upperY, lowerY),
+    );
   }
 
 function updateChartZones() {
@@ -1534,7 +1526,11 @@ function updateChartZones() {
                 viewBox={`0 0 ${chartRef.current?.clientWidth ?? 1} ${chartRef.current?.clientHeight ?? 1}`}
                 preserveAspectRatio="none"
               >
-                <path d={bollingerOverlayPath} fill="rgba(37, 99, 235, 0.34)" stroke="none" />
+                <path
+                  d={bollingerOverlayPath}
+                  fill={bollingerHoverActive ? "rgba(37, 99, 235, 0.34)" : "rgba(37, 99, 235, 0.12)"}
+                  stroke="none"
+                />
               </svg>
             ) : null}
             <div className="chart-overlay" aria-hidden="true">
