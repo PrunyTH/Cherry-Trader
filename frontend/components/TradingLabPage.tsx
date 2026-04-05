@@ -57,7 +57,8 @@ type ChartHoverSnapshot = {
 type ChartZone = {
   left: number;
   width: number;
-  kind: "good" | "bad";
+  kind: "good";
+  opacity: number;
 };
 
 type HistoryRange = "1D" | "1M" | "3M" | "6M" | "1Y" | "2Y" | "ALL";
@@ -432,58 +433,73 @@ function updateChartZones() {
   const { candles: dataCandles, ema20, ema50, ema200 } = chartDataRef.current;
   if (!chart || !dataCandles.length || !ema20.length || !ema50.length || !ema200.length) {
     setChartZones([]);
+    return;
+  }
+
+  const segments: ChartZone[] = [];
+  let segmentStartIndex = 0;
+  let currentOpacity: number | null = null;
+
+  const pushSegment = (startIndex: number, endIndex: number, opacity: number) => {
+    const startTime = dataCandles[startIndex]?.time;
+    const endTime = dataCandles[endIndex + 1]?.time ?? dataCandles[endIndex]?.time;
+    if (startTime == null || endTime == null) {
       return;
     }
+    const left = chart.timeScale().timeToCoordinate(startTime as UTCTimestamp);
+    const right = chart.timeScale().timeToCoordinate(endTime as UTCTimestamp);
+    if (left == null || right == null) {
+      return;
+    }
+    segments.push({
+      left,
+      width: Math.max(1, right - left),
+      kind: "good",
+      opacity,
+    });
+  };
 
-    const segments: ChartZone[] = [];
-    let segmentStartIndex = 0;
-    let currentKind: ChartZone["kind"] | null = null;
+  for (let i = 200; i < dataCandles.length; i += 1) {
+    const candle = dataCandles[i];
+    const price = candle.close;
+    const openPrice = candle.open;
+    const entryLine = ema20[i]?.value ?? 0;
+    const trendLine = ema50[i]?.value ?? 0;
+    const filterLine = ema200[i]?.value ?? 0;
+    const prevTrend = ema50[Math.max(0, i - 3)]?.value ?? trendLine;
+    const bullishRegime = trendLine > filterLine && price > trendLine && trendLine >= prevTrend;
 
-    const pushSegment = (startIndex: number, endIndex: number, kind: ChartZone["kind"]) => {
-      const startTime = dataCandles[startIndex]?.time;
-      const endTime = dataCandles[endIndex + 1]?.time ?? dataCandles[endIndex]?.time;
-      if (startTime == null || endTime == null) {
-        return;
+    if (!bullishRegime) {
+      if (currentOpacity != null) {
+        pushSegment(segmentStartIndex, i - 1, currentOpacity);
+        currentOpacity = null;
       }
-      const left = chart.timeScale().timeToCoordinate(startTime as UTCTimestamp);
-      const right = chart.timeScale().timeToCoordinate(endTime as UTCTimestamp);
-      if (left == null || right == null) {
-        return;
-      }
-      segments.push({
-        left,
-        width: Math.max(1, right - left),
-        kind,
-      });
-    };
-
-    for (let i = 200; i < dataCandles.length; i += 1) {
-      const price = dataCandles[i].close;
-      const trendLine = ema50[i]?.value ?? 0;
-      const filterLine = ema200[i]?.value ?? 0;
-      const prevTrend = ema50[Math.max(0, i - 3)]?.value ?? trendLine;
-      const bullishRegime = trendLine > filterLine && price > trendLine && trendLine >= prevTrend;
-      const kind: ChartZone["kind"] = bullishRegime ? "good" : "bad";
-      if (currentKind == null) {
-        currentKind = kind;
-        segmentStartIndex = i;
-        continue;
-      }
-      if (kind !== currentKind) {
-        if (currentKind === "good") {
-          pushSegment(segmentStartIndex, i - 1, currentKind);
-        }
-        currentKind = kind;
-        segmentStartIndex = i;
-      }
+      continue;
     }
 
-    if (currentKind === "good" && dataCandles.length > 0) {
-      pushSegment(segmentStartIndex, dataCandles.length - 1, currentKind);
+    const pullbackTouched = candle.low <= entryLine * 1.002 && price < entryLine;
+    const reclaim = price > entryLine && price > openPrice;
+    const opacity = pullbackTouched || reclaim ? 0.34 : 0.16;
+
+    if (currentOpacity == null) {
+      currentOpacity = opacity;
+      segmentStartIndex = i;
+      continue;
     }
 
-    setChartZones(segments);
+    if (Math.abs(opacity - currentOpacity) > 0.01) {
+      pushSegment(segmentStartIndex, i - 1, currentOpacity);
+      currentOpacity = opacity;
+      segmentStartIndex = i;
+    }
   }
+
+  if (currentOpacity != null && dataCandles.length > 0) {
+    pushSegment(segmentStartIndex, dataCandles.length - 1, currentOpacity);
+  }
+
+  setChartZones(segments);
+}
 
   function applyChartData(candleData: CandlestickData[]) {
     if (!seriesApi.current || !chartApi.current || !candleData.length) {
@@ -1233,13 +1249,13 @@ function updateChartZones() {
           ) : null}
           <div className="chart-overlay" aria-hidden="true">
             <div className="chart-zone-layer">
-              {chartZones.map((zone, index) => (
-                <div
-                  key={`${zone.kind}-${index}-${zone.left}-${zone.width}`}
-                  className={`chart-zone ${zone.kind}`}
-                  style={{ left: `${zone.left}px`, width: `${zone.width}px` }}
-                />
-              ))}
+                {chartZones.map((zone, index) => (
+                  <div
+                    key={`${zone.kind}-${index}-${zone.left}-${zone.width}`}
+                    className={`chart-zone ${zone.kind}`}
+                    style={{ left: `${zone.left}px`, width: `${zone.width}px`, opacity: zone.opacity }}
+                  />
+                ))}
             </div>
             {cherryPins.map((pin, index) => (
               <div
