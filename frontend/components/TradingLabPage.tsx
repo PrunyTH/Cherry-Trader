@@ -18,6 +18,7 @@ import {
   Candle,
   BacktestTrade,
   fetchCandles,
+  fetchChartCandles,
   fetchSignals,
   runBacktest,
   Signal,
@@ -296,6 +297,7 @@ export function TradingLabPage() {
   });
   const chartHoverTimeRef = useRef<number | null>(null);
   const chartPaneCellRef = useRef<HTMLTableCellElement | null>(null);
+  const chartLoadSeqRef = useRef(0);
   const zoomResetRef = useRef<number | null>(null);
   const dragStateRef = useRef<{
     active: boolean;
@@ -437,36 +439,47 @@ export function TradingLabPage() {
   }
 
   useEffect(() => {
-    let mounted = true;
+    const loadSeq = chartLoadSeqRef.current + 1;
+    chartLoadSeqRef.current = loadSeq;
+    let cancelled = false;
 
     async function load() {
       try {
-        setStatus("loading candles");
-        const [candlesRes, signalsRes] = await Promise.all([
-          fetchCandles(SYMBOL, chartInterval, chartCandleLimit),
-          fetchSignals(SYMBOL, chartInterval, 100),
-        ]);
-
-        if (!mounted) {
+        setStatus(`loading ${chartInterval} candles`);
+        const candlesRes = await fetchChartCandles(SYMBOL, chartInterval, chartCandleLimit);
+        if (cancelled || chartLoadSeqRef.current !== loadSeq) {
           return;
         }
 
         const candleData = candlesRes.candles.map(toSeries);
-        const signalMarkers = signalsRes.signals.flatMap((signal) => signalToMarkers(signal));
         setCandles(candleData);
-        setMarkers(signalMarkers);
-        setStatus(`loaded ${candleData.length} candles`);
+        setStatus(`loading ${chartInterval} signals`);
+
+        void fetchSignals(SYMBOL, chartInterval, 100)
+          .then((signalsRes) => {
+            if (cancelled || chartLoadSeqRef.current !== loadSeq) {
+              return;
+            }
+            setMarkers(signalsRes.signals.flatMap((signal) => signalToMarkers(signal)));
+            setStatus(`loaded ${candleData.length} candles`);
+          })
+          .catch((error) => {
+            if (cancelled || chartLoadSeqRef.current !== loadSeq) {
+              return;
+            }
+            setStatus(`chart signals unavailable: ${error instanceof Error ? error.message : "unknown error"}`);
+          });
       } catch (error) {
-        if (!mounted) {
+        if (cancelled || chartLoadSeqRef.current !== loadSeq) {
           return;
         }
-        setStatus(`backend unavailable: ${error instanceof Error ? error.message : "unknown error"}`);
+        setStatus(`chart load failed: ${error instanceof Error ? error.message : "unknown error"}`);
       }
     }
 
-    load();
+    void load();
     return () => {
-      mounted = false;
+      cancelled = true;
     };
   }, [chartInterval, chartCandleLimit]);
 
@@ -911,28 +924,41 @@ export function TradingLabPage() {
   }
 
   function refreshChart() {
+    const loadSeq = chartLoadSeqRef.current + 1;
+    chartLoadSeqRef.current = loadSeq;
     chartAutoFitRef.current = true;
     chartLatestViewRef.current = false;
     setChartZoomed(false);
     chartPaneCellRef.current?.style.removeProperty("transform");
     verticalShiftPxRef.current = 0;
-    setStatus(`refreshing ${chartInterval} chart`);
-    setCandles([]);
-    setMarkers([]);
-    setCherryPins([]);
-    setChartZones([]);
-    setChartHover(null);
+    setStatus(`refreshing ${chartInterval} candles`);
     void (async () => {
       try {
-        const [candlesRes, signalsRes] = await Promise.all([
-          fetchCandles(SYMBOL, chartInterval, chartCandleLimit),
-          fetchSignals(SYMBOL, chartInterval, 100),
-        ]);
+        const candlesRes = await fetchChartCandles(SYMBOL, chartInterval, chartCandleLimit);
+        if (chartLoadSeqRef.current !== loadSeq) {
+          return;
+        }
         const candleData = candlesRes.candles.map(toSeries);
         setCandles(candleData);
-        setMarkers(signalsRes.signals.flatMap((signal) => signalToMarkers(signal)));
-        setStatus(`loaded ${candleData.length} candles`);
+        setStatus(`refreshing ${chartInterval} signals`);
+        void fetchSignals(SYMBOL, chartInterval, 100)
+          .then((signalsRes) => {
+            if (chartLoadSeqRef.current !== loadSeq) {
+              return;
+            }
+            setMarkers(signalsRes.signals.flatMap((signal) => signalToMarkers(signal)));
+            setStatus(`loaded ${candleData.length} candles`);
+          })
+          .catch((error) => {
+            if (chartLoadSeqRef.current !== loadSeq) {
+              return;
+            }
+            setStatus(`chart refresh failed: ${error instanceof Error ? error.message : "unknown error"}`);
+          });
       } catch (error) {
+        if (chartLoadSeqRef.current !== loadSeq) {
+          return;
+        }
         setStatus(`chart refresh failed: ${error instanceof Error ? error.message : "unknown error"}`);
       }
     })();

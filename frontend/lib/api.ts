@@ -424,6 +424,11 @@ export async function fetchCandles(symbol: string, interval: string, limit = 300
   }
 }
 
+export async function fetchChartCandles(symbol: string, interval: string, limit = 300) {
+  const candles = await fetchBinanceCandlesPaged(symbol, interval, Math.min(limit, 250000));
+  return { candles };
+}
+
 export async function fetchSignals(symbol: string, interval: string, limit = 200) {
   try {
     const response = await fetch(`${BACKEND_URL}/api/signals?symbol=${symbol}&interval=${interval}&limit=${limit}`);
