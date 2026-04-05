@@ -453,22 +453,19 @@ export function TradingLabPage() {
 
         const candleData = candlesRes.candles.map(toSeries);
         setCandles(candleData);
-        setStatus(`loading ${chartInterval} signals`);
-
         void fetchSignals(SYMBOL, chartInterval, 100)
           .then((signalsRes) => {
             if (cancelled || chartLoadSeqRef.current !== loadSeq) {
               return;
             }
             setMarkers(signalsRes.signals.flatMap((signal) => signalToMarkers(signal)));
-            setStatus(`loaded ${candleData.length} candles`);
           })
           .catch((error) => {
             if (cancelled || chartLoadSeqRef.current !== loadSeq) {
               return;
             }
-            setStatus(`chart signals unavailable: ${error instanceof Error ? error.message : "unknown error"}`);
           });
+        setStatus(`loaded ${candleData.length} candles`);
       } catch (error) {
         if (cancelled || chartLoadSeqRef.current !== loadSeq) {
           return;
@@ -940,21 +937,19 @@ export function TradingLabPage() {
         }
         const candleData = candlesRes.candles.map(toSeries);
         setCandles(candleData);
-        setStatus(`refreshing ${chartInterval} signals`);
         void fetchSignals(SYMBOL, chartInterval, 100)
           .then((signalsRes) => {
             if (chartLoadSeqRef.current !== loadSeq) {
               return;
             }
             setMarkers(signalsRes.signals.flatMap((signal) => signalToMarkers(signal)));
-            setStatus(`loaded ${candleData.length} candles`);
           })
           .catch((error) => {
             if (chartLoadSeqRef.current !== loadSeq) {
               return;
             }
-            setStatus(`chart refresh failed: ${error instanceof Error ? error.message : "unknown error"}`);
           });
+        setStatus(`loaded ${candleData.length} candles`);
       } catch (error) {
         if (chartLoadSeqRef.current !== loadSeq) {
           return;
