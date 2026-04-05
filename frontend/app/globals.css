@@ -571,15 +571,15 @@ input {
   position: absolute;
   top: 0;
   bottom: 0;
-  opacity: 0.18;
+  opacity: 0.34;
 }
 
 .chart-zone.regime {
-  background: linear-gradient(180deg, rgba(15, 157, 88, 0.36), rgba(15, 157, 88, 0.18));
+  background: linear-gradient(180deg, rgba(15, 157, 88, 0.58), rgba(15, 157, 88, 0.30));
 }
 
 .chart-zone.setup {
-  background: linear-gradient(180deg, rgba(37, 99, 235, 0.42), rgba(37, 99, 235, 0.20));
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.68), rgba(37, 99, 235, 0.38));
 }
 
 .chart-hover-box {

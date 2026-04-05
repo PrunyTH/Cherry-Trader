@@ -481,8 +481,9 @@ function updateChartZones() {
 
     const pullbackTouched = candle.low <= entryLine * 1.002 && price < entryLine;
     const reclaim = price > entryLine && price > openPrice;
-    const opacity = pullbackTouched || reclaim ? 0.34 : 0.16;
-    const kind: ChartZone["kind"] = pullbackTouched || reclaim ? "setup" : "regime";
+    const setupActive = pullbackTouched || reclaim;
+    const opacity = setupActive ? 0.58 : 0.28;
+    const kind: ChartZone["kind"] = setupActive ? "setup" : "regime";
 
     if (currentOpacity == null) {
       currentOpacity = opacity;
