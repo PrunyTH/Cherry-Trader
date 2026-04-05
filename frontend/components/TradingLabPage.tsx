@@ -217,8 +217,8 @@ function volumeSeries(candles: Candle[]) {
     value: candle.volume ?? 0,
     color:
       index === 0 || candle.close >= candles[index - 1].close
-        ? "rgba(15, 157, 88, 0.65)"
-        : "rgba(215, 38, 61, 0.65)",
+        ? "rgba(15, 157, 88, 0.24)"
+        : "rgba(215, 38, 61, 0.24)",
   }));
 
   return volumes;
@@ -781,7 +781,7 @@ function updateChartZones() {
       priceFormat: {
         type: "volume",
       },
-      color: "rgba(15, 157, 88, 0.55)",
+      color: "rgba(15, 157, 88, 0.22)",
     });
     const heikinAshi = chart.addCandlestickSeries({
       visible: false,
