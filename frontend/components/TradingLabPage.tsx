@@ -312,6 +312,7 @@ export function TradingLabPage() {
   const leverage = sanitizeLeverage(leverageInput);
   const lookbackDays = historyDaysForRange(historyRange);
   const chartCandleLimit = chartCandleLimitFor(chartInterval, historyDaysForRange(chartHistoryRange));
+  const chartStatusBusy = status.startsWith("loading") || status.startsWith("refreshing");
 
   function syncChartHover(time: number | null) {
     chartHoverTimeRef.current = time;
@@ -1089,7 +1090,14 @@ export function TradingLabPage() {
           <div className="chart-actions">
             <div className="pill">Realtime via backend WebSocket</div>
             <div className="chart-status-cluster" aria-label="Chart status">
-              <div className="chart-status-pill">Status: {status}</div>
+              <div className={`chart-status-pill ${chartStatusBusy ? "busy" : ""}`}>
+                <span className="chart-status-text">Status: {status}</span>
+                {chartStatusBusy ? (
+                  <span className="chart-status-progress" aria-hidden="true">
+                    <span className="chart-status-progress-bar" />
+                  </span>
+                ) : null}
+              </div>
               <div className="chart-status-pill">Last signal: {lastSignal}</div>
             </div>
             {chartZoomed ? (
