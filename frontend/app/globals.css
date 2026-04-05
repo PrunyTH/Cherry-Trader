@@ -578,21 +578,7 @@ input {
   overflow: hidden;
 }
 
-.chart-volume-pane {
-  position: relative;
-  flex: 0 0 72px;
-  min-height: 72px;
-  overflow: hidden;
-  border-top: 1px solid rgba(17, 17, 17, 0.05);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 248, 249, 0.78));
-}
-
 .chart {
-  position: absolute;
-  inset: 0 20px 0 20px;
-}
-
-.volume-chart {
   position: absolute;
   inset: 0 20px 0 20px;
 }
@@ -633,9 +619,8 @@ input {
 }
 
 .chart-bollinger-fill path {
-  fill: rgba(37, 99, 235, 0.22);
+  fill: rgba(37, 99, 235, 0.34);
   stroke: none;
-  mix-blend-mode: multiply;
 }
 
 .chart-hover-box {
@@ -1108,16 +1093,7 @@ input {
     inset: 0 16px 0 16px;
   }
 
-  .volume-chart {
-    inset: 0 16px 0 16px;
-  }
-
   .chart-overlay {
     inset: 0 16px 0 16px;
-  }
-
-  .chart-volume-pane {
-    flex-basis: 66px;
-    min-height: 66px;
   }
 }

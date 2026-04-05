@@ -433,9 +433,7 @@ export function TradingLabPage() {
   const chartAutoFitRef = useRef(true);
   const chartLatestViewRef = useRef(false);
   const chartRef = useRef<HTMLDivElement | null>(null);
-  const volumeChartRef = useRef<HTMLDivElement | null>(null);
   const chartApi = useRef<IChartApi | null>(null);
-  const volumeChartApi = useRef<IChartApi | null>(null);
   const seriesApi = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const ema20Api = useRef<ISeriesApi<"Line"> | null>(null);
   const ema50Api = useRef<ISeriesApi<"Line"> | null>(null);
@@ -485,18 +483,6 @@ export function TradingLabPage() {
   const lookbackDays = historyDaysForRange(historyRange);
   const chartCandleLimit = chartCandleLimitFor(chartInterval, historyDaysForRange(chartHistoryRange));
   const chartStatusBusy = status.startsWith("loading") || status.startsWith("refreshing");
-
-  function syncVolumeChartToPrice() {
-    const priceChart = chartApi.current;
-    const volumeChart = volumeChartApi.current;
-    if (!priceChart || !volumeChart) {
-      return;
-    }
-    const range = priceChart.timeScale().getVisibleLogicalRange();
-    if (range) {
-      volumeChart.timeScale().setVisibleLogicalRange(range);
-    }
-  }
 
   async function loadAdminRuns() {
     setAdminBusy(true);
@@ -750,14 +736,12 @@ function updateChartZones() {
     });
     if (chartAutoFitRef.current) {
       chartApi.current.timeScale().fitContent();
-      syncVolumeChartToPrice();
     } else if (chartLatestViewRef.current) {
       const visibleBars = Math.min(250, candleData.length);
       chartApi.current.timeScale().setVisibleLogicalRange({
         from: Math.max(0, candleData.length - visibleBars),
         to: candleData.length - 1,
       });
-      syncVolumeChartToPrice();
     }
     updateCherryPins();
     updateChartZones();
@@ -831,7 +815,7 @@ function updateChartZones() {
   }, [candles, rawCandles]);
 
   useEffect(() => {
-    if (!chartRef.current || !volumeChartRef.current) {
+    if (!chartRef.current) {
       return;
     }
     const chart = createChart(chartRef.current, {
@@ -871,50 +855,6 @@ function updateChartZones() {
       },
       width: chartRef.current.clientWidth,
       height: chartRef.current.clientHeight,
-    });
-
-    const volumeChart = createChart(volumeChartRef.current, {
-      layout: {
-        background: { type: ColorType.Solid, color: "#ffffff" },
-        textColor: "#111111",
-      },
-      grid: {
-        vertLines: { color: "rgba(17, 17, 17, 0.04)" },
-        horzLines: { color: "rgba(17, 17, 17, 0.08)" },
-      },
-      rightPriceScale: {
-        visible: false,
-        borderVisible: false,
-      },
-      leftPriceScale: {
-        visible: false,
-      },
-      timeScale: {
-        borderColor: "rgba(17, 17, 17, 0.14)",
-        timeVisible: true,
-        barSpacing: 14,
-        minBarSpacing: 0.05,
-        rightOffset: 0,
-        fixLeftEdge: true,
-        fixRightEdge: true,
-        lockVisibleTimeRangeOnResize: true,
-        visible: true,
-      },
-      crosshair: { mode: CrosshairMode.Normal },
-      handleScroll: {
-        mouseWheel: false,
-        pressedMouseMove: false,
-        horzTouchDrag: false,
-        vertTouchDrag: false,
-      },
-      handleScale: {
-        mouseWheel: false,
-        pinch: false,
-        axisPressedMouseMove: { time: false, price: false },
-        axisDoubleClickReset: { time: false, price: false },
-      },
-      width: volumeChartRef.current?.clientWidth ?? chartRef.current.clientWidth,
-      height: volumeChartRef.current?.clientHeight ?? 128,
     });
 
     const series = chart.addCandlestickSeries({
@@ -961,12 +901,20 @@ function updateChartZones() {
       priceLineVisible: false,
       lastValueVisible: false,
     });
-    const volume = volumeChart.addHistogramSeries({
-      priceScaleId: "",
+    const volume = chart.addHistogramSeries({
+      priceScaleId: "volume",
       priceFormat: {
         type: "volume",
       },
-      color: "rgba(15, 157, 88, 0.22)",
+      color: "rgba(15, 157, 88, 0.18)",
+    });
+    chart.priceScale("volume").applyOptions({
+      visible: false,
+      borderVisible: false,
+      scaleMargins: {
+        top: 0.82,
+        bottom: 0.02,
+      },
     });
     const heikinAshi = chart.addCandlestickSeries({
       visible: false,
@@ -978,7 +926,6 @@ function updateChartZones() {
       wickDownColor: "rgba(239, 68, 68, 0.22)",
     });
     chartApi.current = chart;
-    volumeChartApi.current = volumeChart;
     seriesApi.current = series;
     ema20Api.current = ema20;
     ema50Api.current = ema50;
@@ -992,7 +939,6 @@ function updateChartZones() {
     applyChartData(chartDataRef.current.candles, chartDataRef.current.rawCandles);
     if (chartDataRef.current.candles.length) {
       chart.timeScale().fitContent();
-      syncVolumeChartToPrice();
       chartAutoFitRef.current = true;
       chartLatestViewRef.current = false;
     }
@@ -1023,14 +969,13 @@ function updateChartZones() {
         setChartHover(null);
         return;
       }
-    syncChartHover(param.time, param.point ? { x: param.point.x, y: param.point.y } : null);
+      syncChartHover(param.time, param.point ? { x: param.point.x, y: param.point.y } : null);
     };
 
     const onViewportChange = () => {
       updateCherryPins();
       updateChartZones();
       updateBollingerOverlay();
-      syncVolumeChartToPrice();
     };
 
     chartRef.current.addEventListener("wheel", onWheel, { passive: false });
@@ -1097,19 +1042,14 @@ function updateChartZones() {
         return;
       }
       chart.resize(chartRef.current.clientWidth, chartRef.current.clientHeight);
-      if (volumeChartApi.current) {
-        volumeChartApi.current.resize(volumeChartRef.current!.clientWidth, volumeChartRef.current!.clientHeight);
-      }
       if (chartAutoFitRef.current) {
         chart.timeScale().fitContent();
-        syncVolumeChartToPrice();
       }
       updateCherryPins();
       updateChartZones();
       updateBollingerOverlay();
     });
     observer.observe(chartRef.current);
-    observer.observe(volumeChartRef.current);
 
     return () => {
       chartRef.current?.removeEventListener("wheel", onWheel);
@@ -1127,7 +1067,6 @@ function updateChartZones() {
       observer.disconnect();
       chart.remove();
       chartApi.current = null;
-      volumeChartApi.current = null;
       seriesApi.current = null;
       ema20Api.current = null;
       ema50Api.current = null;
@@ -1149,12 +1088,8 @@ function updateChartZones() {
         return;
       }
       chartApi.current.resize(chartRef.current.clientWidth, chartRef.current.clientHeight);
-      if (volumeChartRef.current && volumeChartApi.current) {
-        volumeChartApi.current.resize(volumeChartRef.current!.clientWidth, volumeChartRef.current!.clientHeight);
-      }
       if (chartAutoFitRef.current) {
         chartApi.current.timeScale().fitContent();
-        syncVolumeChartToPrice();
       }
       updateCherryPins();
       updateBollingerOverlay();
@@ -1593,8 +1528,13 @@ function updateChartZones() {
               </div>
             ) : null}
             {showBollingerBands && bollingerOverlayPath ? (
-              <svg className="chart-bollinger-fill" aria-hidden="true" viewBox={`0 0 ${chartRef.current?.clientWidth ?? 1} ${chartRef.current?.clientHeight ?? 1}`}>
-                <path d={bollingerOverlayPath} fill="rgba(37, 99, 235, 0.18)" stroke="none" />
+              <svg
+                className="chart-bollinger-fill"
+                aria-hidden="true"
+                viewBox={`0 0 ${chartRef.current?.clientWidth ?? 1} ${chartRef.current?.clientHeight ?? 1}`}
+                preserveAspectRatio="none"
+              >
+                <path d={bollingerOverlayPath} fill="rgba(37, 99, 235, 0.34)" stroke="none" />
               </svg>
             ) : null}
             <div className="chart-overlay" aria-hidden="true">
@@ -1619,9 +1559,6 @@ function updateChartZones() {
                 </div>
               ))}
             </div>
-          </div>
-          <div className="chart-volume-pane">
-            <div className="chart volume-chart" ref={volumeChartRef} />
           </div>
         </div>
         {showAdminPanel ? (
