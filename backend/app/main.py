@@ -23,6 +23,7 @@ from .db import (
     get_all_closed_candles,
     get_candles,
     get_signals,
+    get_top_backtest_evaluations,
     get_strategy_setting,
     init_db,
     insert_trades,
@@ -412,6 +413,13 @@ def api_strategy(symbol: str = settings.default_symbol, interval: str = "1m"):
         "interval": interval,
         "fast_ema": int(get_strategy_setting(symbol, interval, "fast_ema", "12")),
         "slow_ema": int(get_strategy_setting(symbol, interval, "slow_ema", "26")),
+    }
+
+
+@app.get("/api/admin/runs")
+def api_admin_runs(limit: int = 5):
+    return {
+        "runs": get_top_backtest_evaluations(limit=max(1, min(limit, 25))),
     }
 
 

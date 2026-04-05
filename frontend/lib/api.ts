@@ -113,6 +113,39 @@ export type BacktestBundleResponse = {
   }>;
 };
 
+export type AdminBacktestRun = {
+  evaluation_id: number;
+  bundle_id: number;
+  version_id: number;
+  symbol: string;
+  interval: string;
+  history_range: string;
+  stop_loss_atr_mult: number;
+  run_kind: string;
+  total_return_pct: number;
+  final_equity: number;
+  total_trades: number;
+  win_rate: number;
+  pnl: number;
+  total_fees: number;
+  max_drawdown: number;
+  score: number;
+  strategy_name: string;
+  strategy_label: string;
+  git_commit: string;
+  version_params_json: string;
+  version_created_at: number;
+  lookback_days: number;
+  capital: number;
+  leverage: number;
+  bundle_created_at: number;
+  evaluation_created_at: number;
+};
+
+export type AdminRunsResponse = {
+  runs: AdminBacktestRun[];
+};
+
 function intervalToMinutes(interval: string): number {
   const lookup: Record<string, number> = {
     "1m": 1,
@@ -594,4 +627,12 @@ export async function runBacktestBundle(
   } finally {
     window.clearTimeout(timeoutId);
   }
+}
+
+export async function fetchAdminRuns(limit = 5) {
+  const response = await fetch(`${BACKEND_URL}/api/admin/runs?limit=${limit}`);
+  if (!response.ok) {
+    throw new Error(`backend admin runs request failed: ${response.status}`);
+  }
+  return (await response.json()) as AdminRunsResponse;
 }

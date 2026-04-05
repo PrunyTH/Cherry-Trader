@@ -755,6 +755,41 @@ input {
   font-size: 12px;
 }
 
+.error-banner {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(215, 38, 61, 0.24);
+  background: rgba(215, 38, 61, 0.07);
+  color: var(--bad);
+  font-size: 12px;
+}
+
+.admin-panel {
+  margin: 16px 20px 20px;
+}
+
+.admin-table-wrap {
+  overflow: auto;
+}
+
+.admin-strategy-name {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.admin-strategy-meta {
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mono-cell {
+  font-variant-numeric: tabular-nums;
+}
+
 .strategy-summary-note {
   margin-top: 10px;
   padding-top: 10px;

@@ -475,3 +475,51 @@ def insert_backtest_evaluations(rows: Iterable[dict[str, Any]]) -> None:
                 for row in payload
             ],
         )
+
+
+def get_top_backtest_evaluations(limit: int = 5) -> list[dict[str, Any]]:
+    with db_cursor() as (cur, _):
+        rows = cur.execute(
+            """
+            SELECT
+                e.id AS evaluation_id,
+                e.bundle_id,
+                e.version_id,
+                e.symbol,
+                e.interval,
+                e.history_range,
+                e.stop_loss_atr_mult,
+                e.run_kind,
+                e.total_return_pct,
+                e.final_equity,
+                e.total_trades,
+                e.win_rate,
+                e.pnl,
+                e.total_fees,
+                e.max_drawdown,
+                e.score,
+                e.params_json AS evaluation_params_json,
+                e.created_at AS evaluation_created_at,
+                v.strategy_name,
+                v.strategy_label,
+                v.git_commit,
+                v.params_json AS version_params_json,
+                v.created_at AS version_created_at,
+                b.lookback_days,
+                b.capital,
+                b.leverage,
+                b.stop_loss_atr_mult AS bundle_stop_loss_atr_mult,
+                b.comparison_intervals_json,
+                b.stop_multipliers_json,
+                b.analysis_ranges_json,
+                b.created_at AS bundle_created_at
+            FROM backtest_evaluations e
+            JOIN strategy_versions v ON v.id = e.version_id
+            JOIN backtest_bundles b ON b.id = e.bundle_id
+            WHERE e.run_kind IN ('single', 'base')
+            ORDER BY e.score DESC, e.total_return_pct DESC, e.created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]

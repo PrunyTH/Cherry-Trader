@@ -15,8 +15,10 @@ import {
 
 import {
   BACKEND_URL,
+  AdminBacktestRun,
   Candle,
   BacktestTrade,
+  fetchAdminRuns,
   fetchCandles,
   fetchChartCandles,
   fetchSignals,
@@ -333,6 +335,10 @@ export function TradingLabPage() {
   const [chartHover, setChartHover] = useState<ChartHoverSnapshot | null>(null);
   const [chartZoomed, setChartZoomed] = useState(false);
   const [showHeikinAshi, setShowHeikinAshi] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [adminRuns, setAdminRuns] = useState<AdminBacktestRun[]>([]);
+  const [adminBusy, setAdminBusy] = useState(false);
+  const [adminError, setAdminError] = useState<string | null>(null);
   const chartAutoFitRef = useRef(true);
   const chartLatestViewRef = useRef(false);
   const chartRef = useRef<HTMLDivElement | null>(null);
@@ -375,6 +381,19 @@ export function TradingLabPage() {
   const lookbackDays = historyDaysForRange(historyRange);
   const chartCandleLimit = chartCandleLimitFor(chartInterval, historyDaysForRange(chartHistoryRange));
   const chartStatusBusy = status.startsWith("loading") || status.startsWith("refreshing");
+
+  async function loadAdminRuns() {
+    setAdminBusy(true);
+    setAdminError(null);
+    try {
+      const payload = await fetchAdminRuns(5);
+      setAdminRuns(payload.runs);
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "unknown error");
+    } finally {
+      setAdminBusy(false);
+    }
+  }
 
   function syncChartHover(time: number | null) {
     chartHoverTimeRef.current = time;
@@ -797,6 +816,13 @@ export function TradingLabPage() {
   }, [chartMaximized]);
 
   useEffect(() => {
+    if (!showAdminPanel) {
+      return;
+    }
+    void loadAdminRuns();
+  }, [showAdminPanel]);
+
+  useEffect(() => {
     try {
       const ws = new WebSocket(`${BACKEND_URL.replace("http", "ws")}/ws/stream`);
       ws.onmessage = (event) => {
@@ -1155,8 +1181,31 @@ export function TradingLabPage() {
             <button className="button chart-toggle" onClick={() => setChartMaximized((current) => !current)}>
               {chartMaximized ? "Restore chart" : "Maximize chart"}
             </button>
+            <button className="button chart-toggle secondary" onClick={() => setShowAdminPanel((current) => !current)}>
+              {showAdminPanel ? "Trading view" : "Admin"}
+            </button>
           </div>
         </div>
+        {showAdminPanel ? (
+          <section className="panel admin-panel">
+            <div className="panel-head">
+              <div>
+                <h3>Strategy History</h3>
+                <div className="table-note">Top five persisted runs ranked by the robustness score stored in the database.</div>
+              </div>
+              <button className="button chart-toggle secondary" onClick={() => void loadAdminRuns()}>
+                Refresh
+              </button>
+            </div>
+            <div className="table-note">
+              Database: backend/data/cherry-trader.sqlite3. Each row links back to the exact git commit used for that run.
+            </div>
+            {adminError ? <div className="error-banner">Admin load failed: {adminError}</div> : null}
+            {adminBusy ? <div className="pill">Loading saved runs...</div> : null}
+            <AdminRunsTable runs={adminRuns} />
+          </section>
+        ) : (
+          <>
         <div className={`chart-wrap ${chartMaximized ? "maximized" : ""}`}>
           <div className="chart" ref={chartRef} />
           {chartHover ? (
@@ -1249,7 +1298,59 @@ export function TradingLabPage() {
             <TradeTable trades={trades} />
           </section>
         </div>
+          </>
+        )}
       </main>
+    </div>
+  );
+}
+
+function AdminRunsTable({ runs }: { runs: AdminBacktestRun[] }) {
+  if (!runs.length) {
+    return <div className="empty-state">Run a backtest to populate the saved strategy leaderboard.</div>;
+  }
+
+  return (
+    <div className="trade-table-wrap table-static-wrap admin-table-wrap">
+      <table className="trade-table comparison-table">
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Strategy</th>
+            <th>Commit</th>
+            <th>Frame</th>
+            <th>History</th>
+            <th>Stop</th>
+            <th>Return</th>
+            <th>Final Equity</th>
+            <th>Fees</th>
+            <th>Max DD</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((run) => (
+            <tr key={run.evaluation_id}>
+              <td>{formatLongDateTime(run.evaluation_created_at)}</td>
+              <td>
+                <div className="admin-strategy-name">{run.strategy_label}</div>
+                <div className="admin-strategy-meta">{run.strategy_name}</div>
+              </td>
+              <td className="mono-cell">{run.git_commit}</td>
+              <td>
+                <span className="trade-chip time-frame">{run.interval}</span>
+              </td>
+              <td>{run.history_range}</td>
+              <td>{run.stop_loss_atr_mult.toFixed(2)}x</td>
+              <td className={run.total_return_pct >= 0 ? "good" : "bad"}>{formatNumber(run.total_return_pct)}%</td>
+              <td>{formatNumber(run.final_equity)}</td>
+              <td>{formatNumber(run.total_fees)}</td>
+              <td>{formatNumber(run.max_drawdown)}</td>
+              <td>{formatNumber(run.score)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
