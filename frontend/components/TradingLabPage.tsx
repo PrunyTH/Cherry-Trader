@@ -371,6 +371,7 @@ export function TradingLabPage() {
   const [chartHover, setChartHover] = useState<ChartHoverSnapshot | null>(null);
   const [chartZoomed, setChartZoomed] = useState(false);
   const [showHeikinAshi, setShowHeikinAshi] = useState(false);
+  const [showRegimeOverlay, setShowRegimeOverlay] = useState(true);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [adminRuns, setAdminRuns] = useState<AdminBacktestRun[]>([]);
   const [adminBusy, setAdminBusy] = useState(false);
@@ -481,7 +482,7 @@ export function TradingLabPage() {
       ema20: ema20Point.value,
       ema50: ema50Point.value,
       ema200: ema200Point.value,
-      volumeUsdt,
+      volumeUsdt: volumeUsdt / 1_000_000_000,
     });
   }
 
@@ -1286,6 +1287,13 @@ function updateChartZones() {
               >
                 Heikin-Ashi {showHeikinAshi ? "on" : "off"}
               </button>
+              <button
+                type="button"
+                className={`legend-item legend-toggle ${showRegimeOverlay ? "active" : ""}`}
+                onClick={() => setShowRegimeOverlay((current) => !current)}
+              >
+                Regime overlay {showRegimeOverlay ? "on" : "off"}
+              </button>
               <span className="legend-item">Drag to pan</span>
               <span className="legend-item">Mouse wheel zoom</span>
               <span className="legend-item">Overlay uses current chart timeframe only</span>
@@ -1385,20 +1393,22 @@ function updateChartZones() {
                 </div>
                 <div className="chart-hover-row">
                   <span>Volume</span>
-                  <strong>{formatNumber(chartHover.volumeUsdt)} USDT</strong>
+                  <strong>{formatNumber(chartHover.volumeUsdt)} BUSDT</strong>
                 </div>
               </div>
             ) : null}
             <div className="chart-overlay" aria-hidden="true">
-              <div className="chart-zone-layer">
-                {chartZones.map((zone, index) => (
-                  <div
-                    key={`${zone.kind}-${index}-${zone.left}-${zone.width}`}
-                    className={`chart-zone ${zone.kind}`}
-                    style={{ left: `${zone.left}px`, width: `${zone.width}px`, opacity: zone.opacity }}
-                  />
-                ))}
-              </div>
+              {showRegimeOverlay ? (
+                <div className="chart-zone-layer">
+                  {chartZones.map((zone, index) => (
+                    <div
+                      key={`${zone.kind}-${index}-${zone.left}-${zone.width}`}
+                      className={`chart-zone ${zone.kind}`}
+                      style={{ left: `${zone.left}px`, width: `${zone.width}px`, opacity: zone.opacity }}
+                    />
+                  ))}
+                </div>
+              ) : null}
               {cherryPins.map((pin, index) => (
                 <div
                   key={`${pin.kind}-${index}-${pin.left}-${pin.top}`}
