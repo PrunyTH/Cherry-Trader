@@ -580,8 +580,8 @@ input {
 
 .chart-volume-pane {
   position: relative;
-  flex: 0 0 132px;
-  min-height: 132px;
+  flex: 0 0 92px;
+  min-height: 92px;
   overflow: hidden;
   border-top: 1px solid rgba(17, 17, 17, 0.08);
   background:
@@ -635,7 +635,7 @@ input {
 }
 
 .chart-bollinger-fill path {
-  fill: rgba(37, 99, 235, 0.18);
+  fill: rgba(37, 99, 235, 0.22);
   stroke: none;
   mix-blend-mode: multiply;
 }
@@ -1119,7 +1119,7 @@ input {
   }
 
   .chart-volume-pane {
-    flex-basis: 112px;
-    min-height: 112px;
+    flex-basis: 84px;
+    min-height: 84px;
   }
 }

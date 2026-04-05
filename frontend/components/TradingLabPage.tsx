@@ -510,12 +510,14 @@ export function TradingLabPage() {
     const { candles: dataCandles, rawCandles, ema20, ema50, ema200 } = chartDataRef.current;
     if (time == null || !dataCandles.length) {
       setChartHover(null);
+      updateBollingerOverlay();
       return;
     }
 
     const index = dataCandles.findIndex((candle) => Number(candle.time) === time);
     if (index < 0) {
       setChartHover(null);
+      updateBollingerOverlay();
       return;
     }
 
@@ -526,6 +528,7 @@ export function TradingLabPage() {
     const rawCandle = rawCandles[index];
     if (ema20Point?.value == null || ema50Point?.value == null || ema200Point?.value == null) {
       setChartHover(null);
+      updateBollingerOverlay();
       return;
     }
     const volumeUsdt = rawCandle?.volume != null ? rawCandle.volume * candle.close : 0;
@@ -538,6 +541,7 @@ export function TradingLabPage() {
       ema200: ema200Point.value,
       volumeUsdt: volumeUsdt / 1_000_000_000,
     });
+    updateBollingerOverlay();
   }
 
   function updateBollingerOverlay() {
@@ -551,6 +555,27 @@ export function TradingLabPage() {
     const upperSeries = bollingerUpperApi.current;
     const lowerSeries = bollingerLowerApi.current;
     if (!dataCandles.length || !upperSeries || !lowerSeries || !bollinger.upper.length || !bollinger.lower.length) {
+      setBollingerOverlayPath(null);
+      return;
+    }
+
+    const hoveredTime = chartHoverTimeRef.current;
+    if (hoveredTime == null) {
+      setBollingerOverlayPath(null);
+      return;
+    }
+
+    const hoveredIndex = dataCandles.findIndex((candle) => Number(candle.time) === hoveredTime);
+    if (hoveredIndex < 0) {
+      setBollingerOverlayPath(null);
+      return;
+    }
+
+    const hoveredCandle = dataCandles[hoveredIndex];
+    const hoveredUpper = bollinger.upper[hoveredIndex]?.value;
+    const hoveredLower = bollinger.lower[hoveredIndex]?.value;
+    const hoveredPrice = hoveredCandle?.close ?? null;
+    if (hoveredPrice == null || hoveredUpper == null || hoveredLower == null || hoveredPrice > hoveredUpper || hoveredPrice < hoveredLower) {
       setBollingerOverlayPath(null);
       return;
     }
