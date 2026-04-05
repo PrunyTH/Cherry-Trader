@@ -61,6 +61,23 @@ To stop the running services:
 ./scripts/dev-stop.sh
 ```
 
+### 3b. GitHub sync
+
+Use this when you want to save the current state back to GitHub from the repo root:
+
+```bash
+./scripts/save.sh "short commit message"
+```
+
+That helper:
+
+- pulls `origin/main` with rebase
+- stages all changes
+- commits if there is something to commit
+- pushes to GitHub
+
+Use it on every device so GitHub stays the source of truth.
+
 ### 4. Open the app
 
 - Frontend: `http://127.0.0.1:3000`
