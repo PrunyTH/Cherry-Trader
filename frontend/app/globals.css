@@ -627,6 +627,19 @@ input {
   background: linear-gradient(180deg, rgba(37, 99, 235, 0.82), rgba(37, 99, 235, 0.50));
 }
 
+.chart-bollinger-fill {
+  position: absolute;
+  inset: 0 20px 0 20px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.chart-bollinger-fill path {
+  fill: rgba(37, 99, 235, 0.18);
+  stroke: none;
+  mix-blend-mode: multiply;
+}
+
 .chart-hover-box {
   position: absolute;
   top: 14px;

@@ -415,6 +415,7 @@ export function TradingLabPage() {
   const [cherryPins, setCherryPins] = useState<CherryPin[]>([]);
   const [chartZones, setChartZones] = useState<ChartZone[]>([]);
   const [chartHover, setChartHover] = useState<ChartHoverSnapshot | null>(null);
+  const [bollingerOverlayPath, setBollingerOverlayPath] = useState<string | null>(null);
   const [chartZoomed, setChartZoomed] = useState(false);
   const [showHeikinAshi, setShowHeikinAshi] = useState(false);
   const [showBollingerBands, setShowBollingerBands] = useState(false);
@@ -537,6 +538,61 @@ export function TradingLabPage() {
       ema200: ema200Point.value,
       volumeUsdt: volumeUsdt / 1_000_000_000,
     });
+  }
+
+  function updateBollingerOverlay() {
+    const chart = chartApi.current;
+    if (!chart || !showBollingerBands) {
+      setBollingerOverlayPath(null);
+      return;
+    }
+
+    const { candles: dataCandles, bollinger } = chartDataRef.current;
+    const upperSeries = bollingerUpperApi.current;
+    const lowerSeries = bollingerLowerApi.current;
+    if (!dataCandles.length || !upperSeries || !lowerSeries || !bollinger.upper.length || !bollinger.lower.length) {
+      setBollingerOverlayPath(null);
+      return;
+    }
+
+    const visibleRange = chart.timeScale().getVisibleLogicalRange();
+    if (!visibleRange) {
+      setBollingerOverlayPath(null);
+      return;
+    }
+
+    const startIndex = Math.max(0, Math.floor(visibleRange.from));
+    const endIndex = Math.min(dataCandles.length - 1, Math.ceil(visibleRange.to));
+    const lowerPoints: string[] = [];
+    const upperPoints: string[] = [];
+
+    for (let i = startIndex; i <= endIndex; i += 1) {
+      const candle = dataCandles[i];
+      const upperPoint = bollinger.upper[i];
+      const lowerPoint = bollinger.lower[i];
+      if (!candle || !upperPoint || !lowerPoint) {
+        continue;
+      }
+      const x = chart.timeScale().timeToCoordinate(candle.time as UTCTimestamp);
+      const upperY = upperSeries.priceToCoordinate(upperPoint.value);
+      const lowerY = lowerSeries.priceToCoordinate(lowerPoint.value);
+      if (x == null || upperY == null || lowerY == null) {
+        continue;
+      }
+      lowerPoints.push(`${x},${lowerY}`);
+      upperPoints.push(`${x},${upperY}`);
+    }
+
+    if (lowerPoints.length < 2 || upperPoints.length < 2) {
+      setBollingerOverlayPath(null);
+      return;
+    }
+
+    const path = `M ${lowerPoints[0]} L ${lowerPoints.slice(1).join(" L ")} L ${upperPoints
+      .slice()
+      .reverse()
+      .join(" L ")} Z`;
+    setBollingerOverlayPath(path);
   }
 
 function updateChartZones() {
@@ -664,6 +720,7 @@ function updateChartZones() {
     }
     updateCherryPins();
     updateChartZones();
+    updateBollingerOverlay();
     syncChartHover(chartHoverTimeRef.current);
   }
 
@@ -682,6 +739,7 @@ function updateChartZones() {
     bollingerUpperApi.current.setData(showBollingerBands ? bollinger.upper : []);
     bollingerMiddleApi.current.setData(showBollingerBands ? bollinger.middle : []);
     bollingerLowerApi.current.setData(showBollingerBands ? bollinger.lower : []);
+    updateBollingerOverlay();
   }, [showBollingerBands]);
 
   useEffect(() => {
@@ -845,20 +903,20 @@ function updateChartZones() {
       lastValueVisible: false,
     });
     const bollingerUpper = chart.addLineSeries({
-      color: "rgba(37, 99, 235, 0.34)",
-      lineWidth: 1,
+      color: "rgba(37, 99, 235, 0.8)",
+      lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
     });
     const bollingerMiddle = chart.addLineSeries({
-      color: "rgba(37, 99, 235, 0.70)",
-      lineWidth: 1,
+      color: "rgba(29, 78, 216, 0.95)",
+      lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
     });
     const bollingerLower = chart.addLineSeries({
-      color: "rgba(37, 99, 235, 0.34)",
-      lineWidth: 1,
+      color: "rgba(37, 99, 235, 0.8)",
+      lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
     });
@@ -930,6 +988,7 @@ function updateChartZones() {
     const onViewportChange = () => {
       updateCherryPins();
       updateChartZones();
+      updateBollingerOverlay();
       syncVolumeChartToPrice();
     };
 
@@ -1006,6 +1065,7 @@ function updateChartZones() {
       }
       updateCherryPins();
       updateChartZones();
+      updateBollingerOverlay();
     });
     observer.observe(chartRef.current);
     observer.observe(volumeChartRef.current);
@@ -1056,6 +1116,7 @@ function updateChartZones() {
         syncVolumeChartToPrice();
       }
       updateCherryPins();
+      updateBollingerOverlay();
     });
     return () => window.cancelAnimationFrame(raf);
   }, [chartMaximized]);
@@ -1489,6 +1550,11 @@ function updateChartZones() {
                   <strong>{formatNumber(chartHover.volumeUsdt)} BUSDT</strong>
                 </div>
               </div>
+            ) : null}
+            {showBollingerBands && bollingerOverlayPath ? (
+              <svg className="chart-bollinger-fill" aria-hidden="true" viewBox={`0 0 ${chartRef.current?.clientWidth ?? 1} ${chartRef.current?.clientHeight ?? 1}`}>
+                <path d={bollingerOverlayPath} fill="rgba(37, 99, 235, 0.18)" stroke="none" />
+              </svg>
             ) : null}
             <div className="chart-overlay" aria-hidden="true">
               {showRegimeOverlay ? (
