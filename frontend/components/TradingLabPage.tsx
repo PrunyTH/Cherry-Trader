@@ -1073,8 +1073,8 @@ export function TradingLabPage() {
       <main className={`main ${chartMaximized ? "maximized" : ""}`}>
         <div className="chart-header">
           <div>
-            <div className="pill">{SYMBOL}</div>
             <h2 className="chart-title">Live candlestick chart</h2>
+            <div className="chart-symbol">{SYMBOL}</div>
             <div className="chart-legend" aria-label="Strategy overlays">
               <span className="legend-item"><span className="legend-swatch ema20" />EMA 20</span>
               <span className="legend-item"><span className="legend-swatch ema50" />EMA 50</span>
@@ -1119,7 +1119,10 @@ export function TradingLabPage() {
                   </span>
                 ) : null}
               </div>
-              <div className="chart-status-pill">Last signal: {lastSignal}</div>
+              <div className="chart-status-pill">
+                <span className="chart-status-text">Last signal: {lastSignal}</span>
+                <span className="chart-status-help">Latest strategy event from the backend for the selected chart timeframe.</span>
+              </div>
             </div>
             {chartZoomed ? (
               <button className="button chart-toggle secondary" onClick={resetChartZoom}>

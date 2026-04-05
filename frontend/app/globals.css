@@ -127,6 +127,14 @@ input {
   letter-spacing: 0.08em;
 }
 
+.chart-symbol {
+  margin-top: 6px;
+  color: var(--good);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -353,6 +361,14 @@ input {
 
 .chart-status-text {
   white-space: nowrap;
+}
+
+.chart-status-help {
+  white-space: normal;
+  max-width: 260px;
+  font-size: 10px;
+  line-height: 1.25;
+  color: rgba(102, 88, 93, 0.9);
 }
 
 .chart-status-progress {
