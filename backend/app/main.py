@@ -196,15 +196,6 @@ def health() -> dict[str, str]:
 
 @app.get("/api/candles")
 def api_candles(symbol: str = settings.default_symbol, interval: str = "1m", limit: int = 300):
-    candle_count = get_candle_count(symbol, interval)
-    if candle_count < limit:
-        threading.Thread(
-            target=sync_market_data_cache,
-            args=(symbol, interval, limit),
-            daemon=True,
-        ).start()
-    elif interval != "1M":
-        schedule_cache_repair(symbol, interval)
     return {"candles": get_candles(symbol, interval, limit)}
 
 
@@ -232,11 +223,7 @@ def update_strategy(symbol: str = settings.default_symbol, interval: str = "1m",
 
 @app.post("/api/backtest")
 def api_backtest(request: BacktestRequest):
-    interval_ms = INTERVAL_TO_MS.get(request.interval, 60_000)
-    required_bars = int((request.lookback_days * 86_400_000) / interval_ms) + 250
     candles = get_all_closed_candles(request.symbol, request.interval)
-    if len(candles) < required_bars:
-        schedule_cache_repair(request.symbol, request.interval)
     evaluation_start_time = None
     if candles:
         latest_close_time = candles[-1]["close_time"]
