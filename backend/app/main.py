@@ -227,6 +227,7 @@ def backtest_stats(result) -> dict[str, float]:
         "final_equity": result.final_equity,
         "total_trades": result.total_trades,
         "win_rate": result.win_rate,
+        "pnl": result.pnl,
         "total_fees": result.total_fees,
         "max_drawdown": result.max_drawdown,
         "score": score_backtest_result(result),
