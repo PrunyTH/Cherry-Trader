@@ -580,13 +580,11 @@ input {
 
 .chart-volume-pane {
   position: relative;
-  flex: 0 0 92px;
-  min-height: 92px;
+  flex: 0 0 72px;
+  min-height: 72px;
   overflow: hidden;
-  border-top: 1px solid rgba(17, 17, 17, 0.08);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 248, 249, 0.88)),
-    linear-gradient(135deg, rgba(15, 157, 88, 0.04), rgba(215, 38, 61, 0.03));
+  border-top: 1px solid rgba(17, 17, 17, 0.05);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 248, 249, 0.78));
 }
 
 .chart {
@@ -630,7 +628,7 @@ input {
 .chart-bollinger-fill {
   position: absolute;
   inset: 0 20px 0 20px;
-  z-index: 2;
+  z-index: 4;
   pointer-events: none;
 }
 
@@ -1119,7 +1117,7 @@ input {
   }
 
   .chart-volume-pane {
-    flex-basis: 84px;
-    min-height: 84px;
+    flex-basis: 66px;
+    min-height: 66px;
   }
 }

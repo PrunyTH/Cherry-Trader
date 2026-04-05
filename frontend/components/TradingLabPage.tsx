@@ -55,6 +55,11 @@ type ChartHoverSnapshot = {
   volumeUsdt: number;
 };
 
+type ChartHoverPoint = {
+  x: number;
+  y: number;
+};
+
 type BollingerBandSet = {
   middle: LineData[];
   upper: LineData[];
@@ -460,6 +465,7 @@ export function TradingLabPage() {
     bollinger: { middle: [], upper: [], lower: [] },
   });
   const chartHoverTimeRef = useRef<number | null>(null);
+  const chartHoverPointRef = useRef<ChartHoverPoint | null>(null);
   const chartPaneCellRef = useRef<HTMLDivElement | null>(null);
   const chartLoadSeqRef = useRef(0);
   const zoomResetRef = useRef<number | null>(null);
@@ -505,8 +511,9 @@ export function TradingLabPage() {
     }
   }
 
-  function syncChartHover(time: number | null) {
+  function syncChartHover(time: number | null, point: ChartHoverPoint | null = null) {
     chartHoverTimeRef.current = time;
+    chartHoverPointRef.current = point;
     const { candles: dataCandles, rawCandles, ema20, ema50, ema200 } = chartDataRef.current;
     if (time == null || !dataCandles.length) {
       setChartHover(null);
@@ -571,11 +578,20 @@ export function TradingLabPage() {
       return;
     }
 
-    const hoveredCandle = dataCandles[hoveredIndex];
+    const hoveredPoint = chartHoverPointRef.current;
     const hoveredUpper = bollinger.upper[hoveredIndex]?.value;
     const hoveredLower = bollinger.lower[hoveredIndex]?.value;
-    const hoveredPrice = hoveredCandle?.close ?? null;
-    if (hoveredPrice == null || hoveredUpper == null || hoveredLower == null || hoveredPrice > hoveredUpper || hoveredPrice < hoveredLower) {
+    const upperY = upperSeries.priceToCoordinate(hoveredUpper ?? 0);
+    const lowerY = lowerSeries.priceToCoordinate(hoveredLower ?? 0);
+    if (
+      hoveredPoint == null ||
+      hoveredUpper == null ||
+      hoveredLower == null ||
+      upperY == null ||
+      lowerY == null ||
+      hoveredPoint.y < Math.min(upperY, lowerY) ||
+      hoveredPoint.y > Math.max(upperY, lowerY)
+    ) {
       setBollingerOverlayPath(null);
       return;
     }
@@ -1007,7 +1023,7 @@ function updateChartZones() {
         setChartHover(null);
         return;
       }
-      syncChartHover(param.time);
+    syncChartHover(param.time, param.point ? { x: param.point.x, y: param.point.y } : null);
     };
 
     const onViewportChange = () => {
