@@ -234,9 +234,9 @@ def update_strategy(symbol: str = settings.default_symbol, interval: str = "1m",
 def api_backtest(request: BacktestRequest):
     interval_ms = INTERVAL_TO_MS.get(request.interval, 60_000)
     required_bars = int((request.lookback_days * 86_400_000) / interval_ms) + 250
-    if get_candle_count(request.symbol, request.interval) < required_bars:
-        sync_market_data_cache(request.symbol, request.interval, required_bars)
     candles = get_all_closed_candles(request.symbol, request.interval)
+    if len(candles) < required_bars:
+        schedule_cache_repair(request.symbol, request.interval)
     evaluation_start_time = None
     if candles:
         latest_close_time = candles[-1]["close_time"]

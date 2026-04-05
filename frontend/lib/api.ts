@@ -462,10 +462,6 @@ export async function runBacktest(
       throw new Error(`backend backtest request failed: ${response.status}`);
     }
     return (await response.json()) as BacktestResponse;
-  } catch {
-    const candlesNeeded = Math.min(Math.max(Math.ceil((lookback_days * 24 * 60) / intervalToMinutes(interval)) + 250, 500), 250000);
-    const candles = await fetchBinanceCandlesPaged(symbol, interval, candlesNeeded);
-    return runTrendPullbackBacktestLocal(candles, capital, leverage, stop_loss_atr_mult, lookback_days);
   } finally {
     window.clearTimeout(timeoutId);
   }
