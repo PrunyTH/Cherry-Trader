@@ -55,6 +55,13 @@ export type BacktestStats = {
 
 export type BacktestResponse = {
   run_id: number;
+  bundle_id?: number;
+  strategy_version?: {
+    id: number;
+    name: string;
+    label: string;
+    git_commit: string;
+  };
   stats: BacktestStats;
   trades: BacktestTrade[];
   equity_curve: Array<{
@@ -73,6 +80,13 @@ export type BacktestResponse = {
 
 export type BacktestBundleResponse = {
   run_id: number;
+  bundle_id?: number;
+  strategy_version?: {
+    id: number;
+    name: string;
+    label: string;
+    git_commit: string;
+  };
   base: {
     stats: BacktestStats;
     trades: BacktestTrade[];

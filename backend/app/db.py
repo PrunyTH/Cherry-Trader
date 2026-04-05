@@ -99,6 +99,66 @@ def init_db() -> None:
                 pnl REAL NOT NULL,
                 FOREIGN KEY(run_id) REFERENCES runs(id)
             );
+
+            CREATE TABLE IF NOT EXISTS strategy_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                strategy_name TEXT NOT NULL,
+                strategy_label TEXT NOT NULL,
+                git_commit TEXT NOT NULL,
+                params_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_strategy_versions_unique
+                ON strategy_versions(strategy_name, git_commit, params_json);
+
+            CREATE TABLE IF NOT EXISTS backtest_bundles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                version_id INTEGER NOT NULL,
+                symbol TEXT NOT NULL,
+                interval TEXT NOT NULL,
+                lookback_days INTEGER NOT NULL,
+                capital REAL NOT NULL,
+                leverage REAL NOT NULL,
+                stop_loss_atr_mult REAL NOT NULL,
+                comparison_intervals_json TEXT NOT NULL,
+                stop_multipliers_json TEXT NOT NULL,
+                analysis_ranges_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(version_id) REFERENCES strategy_versions(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS backtest_evaluations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bundle_id INTEGER NOT NULL,
+                version_id INTEGER NOT NULL,
+                symbol TEXT NOT NULL,
+                interval TEXT NOT NULL,
+                history_range TEXT NOT NULL,
+                stop_loss_atr_mult REAL NOT NULL,
+                run_kind TEXT NOT NULL,
+                total_return_pct REAL NOT NULL,
+                final_equity REAL NOT NULL,
+                total_trades INTEGER NOT NULL,
+                win_rate REAL NOT NULL,
+                pnl REAL NOT NULL,
+                total_fees REAL NOT NULL,
+                max_drawdown REAL NOT NULL,
+                score REAL NOT NULL,
+                params_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(bundle_id) REFERENCES backtest_bundles(id),
+                FOREIGN KEY(version_id) REFERENCES strategy_versions(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_backtest_bundles_version
+                ON backtest_bundles(version_id);
+
+            CREATE INDEX IF NOT EXISTS idx_backtest_evaluations_bundle
+                ON backtest_evaluations(bundle_id);
+
+            CREATE INDEX IF NOT EXISTS idx_backtest_evaluations_version
+                ON backtest_evaluations(version_id);
             """
         )
 
@@ -317,5 +377,101 @@ def insert_trades(run_id: int, symbol: str, interval: str, trades: Iterable[dict
                     trade["pnl"],
                 )
                 for trade in trades
+            ],
+        )
+
+
+def insert_strategy_version(strategy_name: str, strategy_label: str, git_commit: str, params_json: str, created_at: int) -> int:
+    with db_cursor() as (cur, _):
+        cur.execute(
+            """
+            INSERT OR IGNORE INTO strategy_versions (strategy_name, strategy_label, git_commit, params_json, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (strategy_name, strategy_label, git_commit, params_json, created_at),
+        )
+        row = cur.execute(
+            """
+            SELECT id
+            FROM strategy_versions
+            WHERE strategy_name = ? AND git_commit = ? AND params_json = ?
+            """,
+            (strategy_name, git_commit, params_json),
+        ).fetchone()
+        return int(row["id"]) if row else int(cur.lastrowid)
+
+
+def insert_backtest_bundle(
+    version_id: int,
+    symbol: str,
+    interval: str,
+    lookback_days: int,
+    capital: float,
+    leverage: float,
+    stop_loss_atr_mult: float,
+    comparison_intervals_json: str,
+    stop_multipliers_json: str,
+    analysis_ranges_json: str,
+    created_at: int,
+) -> int:
+    with db_cursor() as (cur, _):
+        cur.execute(
+            """
+            INSERT INTO backtest_bundles (
+                version_id, symbol, interval, lookback_days, capital, leverage, stop_loss_atr_mult,
+                comparison_intervals_json, stop_multipliers_json, analysis_ranges_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                version_id,
+                symbol,
+                interval,
+                lookback_days,
+                capital,
+                leverage,
+                stop_loss_atr_mult,
+                comparison_intervals_json,
+                stop_multipliers_json,
+                analysis_ranges_json,
+                created_at,
+            ),
+        )
+        return int(cur.lastrowid)
+
+
+def insert_backtest_evaluations(rows: Iterable[dict[str, Any]]) -> None:
+    payload = list(rows)
+    if not payload:
+        return
+    with db_cursor() as (cur, _):
+        cur.executemany(
+            """
+            INSERT INTO backtest_evaluations (
+                bundle_id, version_id, symbol, interval, history_range, stop_loss_atr_mult, run_kind,
+                total_return_pct, final_equity, total_trades, win_rate, pnl, total_fees, max_drawdown,
+                score, params_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    row["bundle_id"],
+                    row["version_id"],
+                    row["symbol"],
+                    row["interval"],
+                    row["history_range"],
+                    row["stop_loss_atr_mult"],
+                    row["run_kind"],
+                    row["total_return_pct"],
+                    row["final_equity"],
+                    row["total_trades"],
+                    row["win_rate"],
+                    row["pnl"],
+                    row["total_fees"],
+                    row["max_drawdown"],
+                    row["score"],
+                    row["params_json"],
+                    row["created_at"],
+                )
+                for row in payload
             ],
         )
