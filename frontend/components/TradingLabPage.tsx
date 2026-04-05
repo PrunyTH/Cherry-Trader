@@ -885,19 +885,19 @@ function updateChartZones() {
     });
     const bollingerUpper = chart.addLineSeries({
       color: "rgba(37, 99, 235, 0.8)",
-      lineWidth: 2,
+      lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     });
     const bollingerMiddle = chart.addLineSeries({
       color: "rgba(29, 78, 216, 0.95)",
-      lineWidth: 2,
+      lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     });
     const bollingerLower = chart.addLineSeries({
       color: "rgba(37, 99, 235, 0.8)",
-      lineWidth: 2,
+      lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     });
