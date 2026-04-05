@@ -1049,10 +1049,6 @@ export function TradingLabPage() {
       </aside>
 
       <main className={`main ${chartMaximized ? "maximized" : ""}`}>
-        <div className="page-status-bar">
-          <div className="pill">Status: {status}</div>
-          <div className="pill">Last signal: {lastSignal}</div>
-        </div>
         <div className="chart-header">
           <div>
             <div className="pill">{SYMBOL}</div>
@@ -1092,6 +1088,10 @@ export function TradingLabPage() {
           </div>
           <div className="chart-actions">
             <div className="pill">Realtime via backend WebSocket</div>
+            <div className="chart-status-cluster" aria-label="Chart status">
+              <div className="chart-status-pill">Status: {status}</div>
+              <div className="chart-status-pill">Last signal: {lastSignal}</div>
+            </div>
             {chartZoomed ? (
               <button className="button chart-toggle secondary" onClick={resetChartZoom}>
                 Reset zoom
