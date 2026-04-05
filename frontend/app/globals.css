@@ -574,8 +574,12 @@ input {
   opacity: 0.18;
 }
 
-.chart-zone.good {
-  background: linear-gradient(180deg, rgba(15, 157, 88, 0.22), rgba(15, 157, 88, 0.08));
+.chart-zone.regime {
+  background: linear-gradient(180deg, rgba(15, 157, 88, 0.36), rgba(15, 157, 88, 0.18));
+}
+
+.chart-zone.setup {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.42), rgba(37, 99, 235, 0.20));
 }
 
 .chart-hover-box {

@@ -57,7 +57,7 @@ type ChartHoverSnapshot = {
 type ChartZone = {
   left: number;
   width: number;
-  kind: "good";
+  kind: "regime" | "setup";
   opacity: number;
 };
 
@@ -439,8 +439,9 @@ function updateChartZones() {
   const segments: ChartZone[] = [];
   let segmentStartIndex = 0;
   let currentOpacity: number | null = null;
+  let currentKind: ChartZone["kind"] | null = null;
 
-  const pushSegment = (startIndex: number, endIndex: number, opacity: number) => {
+  const pushSegment = (startIndex: number, endIndex: number, kind: ChartZone["kind"], opacity: number) => {
     const startTime = dataCandles[startIndex]?.time;
     const endTime = dataCandles[endIndex + 1]?.time ?? dataCandles[endIndex]?.time;
     if (startTime == null || endTime == null) {
@@ -454,7 +455,7 @@ function updateChartZones() {
     segments.push({
       left,
       width: Math.max(1, right - left),
-      kind: "good",
+      kind,
       opacity,
     });
   };
@@ -471,8 +472,9 @@ function updateChartZones() {
 
     if (!bullishRegime) {
       if (currentOpacity != null) {
-        pushSegment(segmentStartIndex, i - 1, currentOpacity);
+        pushSegment(segmentStartIndex, i - 1, currentKind ?? "regime", currentOpacity);
         currentOpacity = null;
+        currentKind = null;
       }
       continue;
     }
@@ -480,22 +482,25 @@ function updateChartZones() {
     const pullbackTouched = candle.low <= entryLine * 1.002 && price < entryLine;
     const reclaim = price > entryLine && price > openPrice;
     const opacity = pullbackTouched || reclaim ? 0.34 : 0.16;
+    const kind: ChartZone["kind"] = pullbackTouched || reclaim ? "setup" : "regime";
 
     if (currentOpacity == null) {
       currentOpacity = opacity;
+      currentKind = kind;
       segmentStartIndex = i;
       continue;
     }
 
-    if (Math.abs(opacity - currentOpacity) > 0.01) {
-      pushSegment(segmentStartIndex, i - 1, currentOpacity);
+    if (kind !== currentKind || Math.abs(opacity - currentOpacity) > 0.01) {
+      pushSegment(segmentStartIndex, i - 1, currentKind ?? kind, currentOpacity);
       currentOpacity = opacity;
+      currentKind = kind;
       segmentStartIndex = i;
     }
   }
 
   if (currentOpacity != null && dataCandles.length > 0) {
-    pushSegment(segmentStartIndex, dataCandles.length - 1, currentOpacity);
+    pushSegment(segmentStartIndex, dataCandles.length - 1, currentKind ?? "regime", currentOpacity);
   }
 
   setChartZones(segments);
