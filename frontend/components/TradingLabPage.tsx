@@ -427,11 +427,11 @@ export function TradingLabPage() {
     });
   }
 
-  function updateChartZones() {
-    const chart = chartApi.current;
-    const { candles: dataCandles, ema20, ema50, ema200 } = chartDataRef.current;
-    if (!chart || !dataCandles.length || !ema20.length || !ema50.length || !ema200.length) {
-      setChartZones([]);
+function updateChartZones() {
+  const chart = chartApi.current;
+  const { candles: dataCandles, ema20, ema50, ema200 } = chartDataRef.current;
+  if (!chart || !dataCandles.length || !ema20.length || !ema50.length || !ema200.length) {
+    setChartZones([]);
       return;
     }
 
@@ -462,21 +462,23 @@ export function TradingLabPage() {
       const trendLine = ema50[i]?.value ?? 0;
       const filterLine = ema200[i]?.value ?? 0;
       const prevTrend = ema50[Math.max(0, i - 3)]?.value ?? trendLine;
-      const trendUp = trendLine > filterLine && price > trendLine && trendLine >= prevTrend;
-      const kind: ChartZone["kind"] = trendUp ? "good" : "bad";
+      const bullishRegime = trendLine > filterLine && price > trendLine && trendLine >= prevTrend;
+      const kind: ChartZone["kind"] = bullishRegime ? "good" : "bad";
       if (currentKind == null) {
         currentKind = kind;
         segmentStartIndex = i;
         continue;
       }
       if (kind !== currentKind) {
-        pushSegment(segmentStartIndex, i - 1, currentKind);
+        if (currentKind === "good") {
+          pushSegment(segmentStartIndex, i - 1, currentKind);
+        }
         currentKind = kind;
         segmentStartIndex = i;
       }
     }
 
-    if (currentKind != null && dataCandles.length > 0) {
+    if (currentKind === "good" && dataCandles.length > 0) {
       pushSegment(segmentStartIndex, dataCandles.length - 1, currentKind);
     }
 

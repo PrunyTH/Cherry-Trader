@@ -571,7 +571,7 @@ input {
   position: absolute;
   top: 0;
   bottom: 0;
-  opacity: 0.14;
+  opacity: 0.18;
 }
 
 .chart-zone.good {
@@ -579,7 +579,7 @@ input {
 }
 
 .chart-zone.bad {
-  background: linear-gradient(180deg, rgba(215, 38, 61, 0.18), rgba(215, 38, 61, 0.06));
+  display: none;
 }
 
 .chart-hover-box {
