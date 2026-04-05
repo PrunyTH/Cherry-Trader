@@ -258,7 +258,7 @@ def api_backtest(request: BacktestRequest):
     run_id = create_run(
         request.symbol,
         request.interval,
-        "trend_pullback_v1",
+        "trend_pullback_v2",
         request.model_dump_json(),
         started_at,
     )
@@ -313,7 +313,7 @@ def api_backtest_bundle(request: BacktestBundleRequest):
     run_id = create_run(
         request.symbol,
         request.interval,
-        "trend_pullback_v1",
+        "trend_pullback_v2",
         request.model_dump_json(),
         started_at,
     )

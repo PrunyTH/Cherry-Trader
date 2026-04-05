@@ -112,7 +112,7 @@ const HISTORY_OPTIONS: Array<{ value: HistoryRange; label: string }> = [
 ];
 const COMPARISON_INTERVALS = ["15m", "1h", "4h", "1d", "1w", "1M"];
 const STOP_MULTIPLIERS = [0.75, 1, 1.5, 2, 2.5, 3];
-const STRATEGY_NAME = "Trend Pullback v1";
+const STRATEGY_NAME = "Trend Pullback v2";
 const BINANCE_TAKER_FEE_RATE = 0.0005;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -963,7 +963,7 @@ export function TradingLabPage() {
           <div>
             <h1 className="title">Cherry Trader</h1>
             <p className="muted">
-              {STRATEGY_NAME}. Long-only trend pullback with setup and exit markers.
+              {STRATEGY_NAME}. Long-only trend pullback with setup, volume, and candle-confirmation markers.
             </p>
           </div>
         </div>
@@ -1036,7 +1036,7 @@ export function TradingLabPage() {
               <li>Trend filter: 50 EMA above 200 EMA for longs.</li>
               <li>Pullback: price trades back down into the 20 EMA area after being above it.</li>
               <li>Reclaim: the candle closes back above the 20 EMA after that pullback.</li>
-              <li>Entry: wait for the pullback, then the reclaim on the selected timeframe.</li>
+              <li>Entry: reclaim candle must be bullish, with volume above recent average and hammer / engulfing confirmation.</li>
               <li>Risk: ATR stop, one position at a time, long-only for now.</li>
               <li>Fees: Binance taker-style commission is deducted on entry and exit.</li>
             </ul>
