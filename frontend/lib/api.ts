@@ -450,7 +450,7 @@ export async function runBacktest(
   stop_loss_atr_mult = 1.5,
 ) {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
+  const timeoutId = window.setTimeout(() => controller.abort(), 60_000);
   try {
     const response = await fetch(`${BACKEND_URL}/api/backtest`, {
       method: "POST",
@@ -462,6 +462,11 @@ export async function runBacktest(
       throw new Error(`backend backtest request failed: ${response.status}`);
     }
     return (await response.json()) as BacktestResponse;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("backtest request timed out while waiting for the backend cache");
+    }
+    throw error;
   } finally {
     window.clearTimeout(timeoutId);
   }
