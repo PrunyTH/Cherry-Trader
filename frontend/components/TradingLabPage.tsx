@@ -52,6 +52,7 @@ type ChartHoverSnapshot = {
   ema20: number;
   ema50: number;
   ema200: number;
+  volumeUsdt: number;
 };
 
 type ChartZone = {
@@ -377,7 +378,9 @@ export function TradingLabPage() {
   const chartAutoFitRef = useRef(true);
   const chartLatestViewRef = useRef(false);
   const chartRef = useRef<HTMLDivElement | null>(null);
+  const volumeChartRef = useRef<HTMLDivElement | null>(null);
   const chartApi = useRef<IChartApi | null>(null);
+  const volumeChartApi = useRef<IChartApi | null>(null);
   const seriesApi = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const ema20Api = useRef<ISeriesApi<"Line"> | null>(null);
   const ema50Api = useRef<ISeriesApi<"Line"> | null>(null);
@@ -402,7 +405,7 @@ export function TradingLabPage() {
     ema200: [],
   });
   const chartHoverTimeRef = useRef<number | null>(null);
-  const chartPaneCellRef = useRef<HTMLTableCellElement | null>(null);
+  const chartPaneCellRef = useRef<HTMLDivElement | null>(null);
   const chartLoadSeqRef = useRef(0);
   const zoomResetRef = useRef<number | null>(null);
   const dragStateRef = useRef<{
@@ -422,6 +425,18 @@ export function TradingLabPage() {
   const chartCandleLimit = chartCandleLimitFor(chartInterval, historyDaysForRange(chartHistoryRange));
   const chartStatusBusy = status.startsWith("loading") || status.startsWith("refreshing");
 
+  function syncVolumeChartToPrice() {
+    const priceChart = chartApi.current;
+    const volumeChart = volumeChartApi.current;
+    if (!priceChart || !volumeChart) {
+      return;
+    }
+    const range = priceChart.timeScale().getVisibleLogicalRange();
+    if (range) {
+      volumeChart.timeScale().setVisibleLogicalRange(range);
+    }
+  }
+
   async function loadAdminRuns() {
     setAdminBusy(true);
     setAdminError(null);
@@ -437,7 +452,7 @@ export function TradingLabPage() {
 
   function syncChartHover(time: number | null) {
     chartHoverTimeRef.current = time;
-    const { candles: dataCandles, ema20, ema50, ema200 } = chartDataRef.current;
+    const { candles: dataCandles, rawCandles, ema20, ema50, ema200 } = chartDataRef.current;
     if (time == null || !dataCandles.length) {
       setChartHover(null);
       return;
@@ -453,10 +468,12 @@ export function TradingLabPage() {
     const ema20Point = ema20[index];
     const ema50Point = ema50[index];
     const ema200Point = ema200[index];
+    const rawCandle = rawCandles[index];
     if (ema20Point?.value == null || ema50Point?.value == null || ema200Point?.value == null) {
       setChartHover(null);
       return;
     }
+    const volumeUsdt = rawCandle?.volume != null ? rawCandle.volume * candle.close : 0;
 
     setChartHover({
       time: Number(candle.time),
@@ -464,6 +481,7 @@ export function TradingLabPage() {
       ema20: ema20Point.value,
       ema50: ema50Point.value,
       ema200: ema200Point.value,
+      volumeUsdt,
     });
   }
 
@@ -538,11 +556,11 @@ function updateChartZones() {
     }
   }
 
-  if (currentOpacity != null && dataCandles.length > 0) {
-    pushSegment(segmentStartIndex, dataCandles.length - 1, currentKind ?? "regime", currentOpacity);
-  }
+    if (currentOpacity != null && dataCandles.length > 0) {
+      pushSegment(segmentStartIndex, dataCandles.length - 1, currentKind ?? "regime", currentOpacity);
+    }
 
-  setChartZones(segments);
+    setChartZones(segments);
 }
 
   function applyChartData(candleData: CandlestickData[], rawCandleData: Candle[]) {
@@ -576,12 +594,14 @@ function updateChartZones() {
     });
     if (chartAutoFitRef.current) {
       chartApi.current.timeScale().fitContent();
+      syncVolumeChartToPrice();
     } else if (chartLatestViewRef.current) {
       const visibleBars = Math.min(250, candleData.length);
       chartApi.current.timeScale().setVisibleLogicalRange({
         from: Math.max(0, candleData.length - visibleBars),
         to: candleData.length - 1,
       });
+      syncVolumeChartToPrice();
     }
     updateCherryPins();
     updateChartZones();
@@ -643,7 +663,7 @@ function updateChartZones() {
   }, [candles, rawCandles]);
 
   useEffect(() => {
-    if (!chartRef.current) {
+    if (!chartRef.current || !volumeChartRef.current) {
       return;
     }
     const chart = createChart(chartRef.current, {
@@ -683,6 +703,50 @@ function updateChartZones() {
       },
       width: chartRef.current.clientWidth,
       height: chartRef.current.clientHeight,
+    });
+
+    const volumeChart = createChart(volumeChartRef.current, {
+      layout: {
+        background: { type: ColorType.Solid, color: "#ffffff" },
+        textColor: "#111111",
+      },
+      grid: {
+        vertLines: { color: "rgba(17, 17, 17, 0.04)" },
+        horzLines: { color: "rgba(17, 17, 17, 0.08)" },
+      },
+      rightPriceScale: {
+        visible: false,
+        borderVisible: false,
+      },
+      leftPriceScale: {
+        visible: false,
+      },
+      timeScale: {
+        borderColor: "rgba(17, 17, 17, 0.14)",
+        timeVisible: true,
+        barSpacing: 14,
+        minBarSpacing: 0.05,
+        rightOffset: 0,
+        fixLeftEdge: true,
+        fixRightEdge: true,
+        lockVisibleTimeRangeOnResize: true,
+        visible: true,
+      },
+      crosshair: { mode: CrosshairMode.Normal },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        mouseWheel: false,
+        pinch: false,
+        axisPressedMouseMove: { time: false, price: false },
+        axisDoubleClickReset: { time: false, price: false },
+      },
+      width: volumeChartRef.current?.clientWidth ?? chartRef.current.clientWidth,
+      height: volumeChartRef.current?.clientHeight ?? 128,
     });
 
     const series = chart.addCandlestickSeries({
@@ -728,17 +792,18 @@ function updateChartZones() {
       wickDownColor: "rgba(239, 68, 68, 0.22)",
     });
     chartApi.current = chart;
+    volumeChartApi.current = volumeChart;
     seriesApi.current = series;
     ema20Api.current = ema20;
     ema50Api.current = ema50;
     ema200Api.current = ema200;
     volumeApi.current = volume;
     heikinAshiApi.current = heikinAshi;
-    chartPaneCellRef.current = chart.chartElement().querySelector("table tr td:nth-child(2)") as HTMLTableCellElement | null;
     updateCherryPins();
     applyChartData(chartDataRef.current.candles, chartDataRef.current.rawCandles);
     if (chartDataRef.current.candles.length) {
       chart.timeScale().fitContent();
+      syncVolumeChartToPrice();
       chartAutoFitRef.current = true;
       chartLatestViewRef.current = false;
     }
@@ -775,6 +840,7 @@ function updateChartZones() {
     const onViewportChange = () => {
       updateCherryPins();
       updateChartZones();
+      syncVolumeChartToPrice();
     };
 
     chartRef.current.addEventListener("wheel", onWheel, { passive: false });
@@ -841,13 +907,18 @@ function updateChartZones() {
         return;
       }
       chart.resize(chartRef.current.clientWidth, chartRef.current.clientHeight);
+      if (volumeChartApi.current) {
+        volumeChartApi.current.resize(volumeChartRef.current!.clientWidth, volumeChartRef.current!.clientHeight);
+      }
       if (chartAutoFitRef.current) {
         chart.timeScale().fitContent();
+        syncVolumeChartToPrice();
       }
       updateCherryPins();
       updateChartZones();
     });
     observer.observe(chartRef.current);
+    observer.observe(volumeChartRef.current);
 
     return () => {
       chartRef.current?.removeEventListener("wheel", onWheel);
@@ -865,6 +936,7 @@ function updateChartZones() {
       observer.disconnect();
       chart.remove();
       chartApi.current = null;
+      volumeChartApi.current = null;
       seriesApi.current = null;
       ema20Api.current = null;
       ema50Api.current = null;
@@ -883,8 +955,12 @@ function updateChartZones() {
         return;
       }
       chartApi.current.resize(chartRef.current.clientWidth, chartRef.current.clientHeight);
+      if (volumeChartRef.current && volumeChartApi.current) {
+        volumeChartApi.current.resize(volumeChartRef.current!.clientWidth, volumeChartRef.current!.clientHeight);
+      }
       if (chartAutoFitRef.current) {
         chartApi.current.timeScale().fitContent();
+        syncVolumeChartToPrice();
       }
       updateCherryPins();
     });
@@ -1048,17 +1124,18 @@ function updateChartZones() {
     chartAutoFitRef.current = true;
     chartLatestViewRef.current = false;
     setChartZoomed(false);
-    chartPaneCellRef.current?.style.removeProperty("transform");
-    verticalShiftPxRef.current = 0;
-    setStatus(`refreshing ${chartInterval} candles`);
-    void (async () => {
-      try {
+      chartPaneCellRef.current?.style.removeProperty("transform");
+      verticalShiftPxRef.current = 0;
+      setStatus(`refreshing ${chartInterval} candles`);
+      void (async () => {
+        try {
         const candlesRes = await fetchChartCandles(SYMBOL, chartInterval, chartCandleLimit);
         if (chartLoadSeqRef.current !== loadSeq) {
           return;
         }
         const candleData = candlesRes.candles.map(toSeries);
         setCandles(candleData);
+        setRawCandles(candlesRes.candles);
         void fetchSignals(SYMBOL, chartInterval, 100)
           .then((signalsRes) => {
             if (chartLoadSeqRef.current !== loadSeq) {
@@ -1285,30 +1362,35 @@ function updateChartZones() {
         ) : (
           <>
         <div className={`chart-wrap ${chartMaximized ? "maximized" : ""}`}>
-          <div className="chart" ref={chartRef} />
-          {chartHover ? (
-            <div className="chart-hover-box" aria-live="polite">
-              <div className="chart-hover-title">{formatLongDateTime(chartHover.time * 1000)}</div>
-              <div className="chart-hover-row">
-                <span>Price</span>
-                <strong>{formatNumber(chartHover.price)} USDT</strong>
+          <div className="chart-price-pane" ref={chartPaneCellRef}>
+            <div className="chart" ref={chartRef} />
+            {chartHover ? (
+              <div className="chart-hover-box" aria-live="polite">
+                <div className="chart-hover-title">{formatLongDateTime(chartHover.time * 1000)}</div>
+                <div className="chart-hover-row">
+                  <span>Price</span>
+                  <strong>{formatNumber(chartHover.price)} USDT</strong>
+                </div>
+                <div className="chart-hover-row">
+                  <span>EMA 20</span>
+                  <strong>{formatNumber(chartHover.ema20)} USDT</strong>
+                </div>
+                <div className="chart-hover-row">
+                  <span>EMA 50</span>
+                  <strong>{formatNumber(chartHover.ema50)} USDT</strong>
+                </div>
+                <div className="chart-hover-row">
+                  <span>EMA 200</span>
+                  <strong>{formatNumber(chartHover.ema200)} USDT</strong>
+                </div>
+                <div className="chart-hover-row">
+                  <span>Volume</span>
+                  <strong>{formatNumber(chartHover.volumeUsdt)} USDT</strong>
+                </div>
               </div>
-              <div className="chart-hover-row">
-                <span>EMA 20</span>
-                <strong>{formatNumber(chartHover.ema20)} USDT</strong>
-              </div>
-              <div className="chart-hover-row">
-                <span>EMA 50</span>
-                <strong>{formatNumber(chartHover.ema50)} USDT</strong>
-              </div>
-              <div className="chart-hover-row">
-                <span>EMA 200</span>
-                <strong>{formatNumber(chartHover.ema200)} USDT</strong>
-              </div>
-            </div>
-          ) : null}
-          <div className="chart-overlay" aria-hidden="true">
-            <div className="chart-zone-layer">
+            ) : null}
+            <div className="chart-overlay" aria-hidden="true">
+              <div className="chart-zone-layer">
                 {chartZones.map((zone, index) => (
                   <div
                     key={`${zone.kind}-${index}-${zone.left}-${zone.width}`}
@@ -1316,16 +1398,20 @@ function updateChartZones() {
                     style={{ left: `${zone.left}px`, width: `${zone.width}px`, opacity: zone.opacity }}
                   />
                 ))}
-            </div>
-            {cherryPins.map((pin, index) => (
-              <div
-                key={`${pin.kind}-${index}-${pin.left}-${pin.top}`}
-                className={`chart-pin ${pin.kind}`}
-                style={{ left: `${pin.left}px`, top: `${pin.top}px` }}
-              >
-                <CherryIcon kind={pin.kind} />
               </div>
-            ))}
+              {cherryPins.map((pin, index) => (
+                <div
+                  key={`${pin.kind}-${index}-${pin.left}-${pin.top}`}
+                  className={`chart-pin ${pin.kind}`}
+                  style={{ left: `${pin.left}px`, top: `${pin.top}px` }}
+                >
+                  <CherryIcon kind={pin.kind} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="chart-volume-pane">
+            <div className="chart volume-chart" ref={volumeChartRef} />
           </div>
         </div>
         <section className="panel comparison-panel heatmap-panel heatmap-first">

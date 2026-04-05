@@ -535,6 +535,8 @@ input {
 
 .chart-wrap {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-height: 640px;
   height: 68vh;
   flex: 1;
@@ -549,14 +551,37 @@ input {
   min-height: calc(100vh - 76px);
 }
 
+.chart-price-pane {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chart-volume-pane {
+  position: relative;
+  flex: 0 0 132px;
+  min-height: 132px;
+  overflow: hidden;
+  border-top: 1px solid rgba(17, 17, 17, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 248, 249, 0.88)),
+    linear-gradient(135deg, rgba(15, 157, 88, 0.04), rgba(215, 38, 61, 0.03));
+}
+
 .chart {
   position: absolute;
-  inset: 0 20px 92px 20px;
+  inset: 0 20px 0 20px;
+}
+
+.volume-chart {
+  position: absolute;
+  inset: 0 20px 0 20px;
 }
 
 .chart-overlay {
   position: absolute;
-  inset: 0 20px 92px 20px;
+  inset: 0 20px 0 20px;
   pointer-events: none;
   z-index: 3;
 }
@@ -1049,10 +1074,19 @@ input {
   }
 
   .chart {
-    inset: 0 16px 16px 16px;
+    inset: 0 16px 0 16px;
+  }
+
+  .volume-chart {
+    inset: 0 16px 0 16px;
   }
 
   .chart-overlay {
-    inset: 0 16px 16px 16px;
+    inset: 0 16px 0 16px;
+  }
+
+  .chart-volume-pane {
+    flex-basis: 112px;
+    min-height: 112px;
   }
 }
