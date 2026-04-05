@@ -1,0 +1,14 @@
+.next/
+node_modules/
+.env
+.venv/
+__pycache__/
+*.pyc
+backend/.env
+frontend/.env
+backend/trading-lab.sqlite3
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+dist/
+coverage/
