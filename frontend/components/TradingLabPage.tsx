@@ -440,8 +440,6 @@ function updateChartZones() {
   let segmentStartIndex = 0;
   let currentOpacity: number | null = null;
   let currentKind: ChartZone["kind"] | null = null;
-  const startIndex = Math.max(200, dataCandles.length - 180);
-
   const pushSegment = (startIndex: number, endIndex: number, kind: ChartZone["kind"], opacity: number) => {
     const startTime = dataCandles[startIndex]?.time;
     const endTime = dataCandles[endIndex + 1]?.time ?? dataCandles[endIndex]?.time;
@@ -461,7 +459,7 @@ function updateChartZones() {
     });
   };
 
-  for (let i = startIndex; i < dataCandles.length; i += 1) {
+  for (let i = 200; i < dataCandles.length; i += 1) {
     const candle = dataCandles[i];
     const price = candle.close;
     const openPrice = candle.open;
@@ -1159,6 +1157,7 @@ function updateChartZones() {
               </button>
               <span className="legend-item">Drag to pan</span>
               <span className="legend-item">Mouse wheel zoom</span>
+              <span className="legend-item">Overlay uses current chart timeframe only</span>
             </div>
             <div className="chart-timeframe-switcher" aria-label="Chart timeframe">
               <span className="chart-timeframe-label">Chart timeframe</span>
