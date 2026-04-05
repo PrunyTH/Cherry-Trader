@@ -536,7 +536,7 @@ input {
 .chart-wrap {
   position: relative;
   min-height: 640px;
-  height: 62vh;
+  height: 68vh;
   flex: 1;
   overflow: hidden;
   background:
@@ -551,12 +551,12 @@ input {
 
 .chart {
   position: absolute;
-  inset: 0 20px 20px 20px;
+  inset: 0 20px 92px 20px;
 }
 
 .chart-overlay {
   position: absolute;
-  inset: 0 20px 20px 20px;
+  inset: 0 20px 92px 20px;
   pointer-events: none;
   z-index: 3;
 }

@@ -206,6 +206,23 @@ function emaSeries(candles: CandlestickData[], period: number): LineData[] {
   }));
 }
 
+function volumeSeries(candles: Candle[]) {
+  if (!candles.length) {
+    return [];
+  }
+
+  const volumes = candles.map((candle, index) => ({
+    time: Math.floor(candle.open_time / 1000) as UTCTimestamp,
+    value: candle.volume ?? 0,
+    color:
+      index === 0 || candle.close >= candles[index - 1].close
+        ? "rgba(15, 157, 88, 0.65)"
+        : "rgba(215, 38, 61, 0.65)",
+  }));
+
+  return volumes;
+}
+
 function heikinAshiSeries(candles: CandlestickData[]): CandlestickData[] {
   if (!candles.length) {
     return [];
@@ -243,6 +260,20 @@ function mergeCandleSeries(current: CandlestickData[], next: CandlestickData) {
     return [...current.slice(0, -1), next];
   }
   if (last.time < next.time) {
+    return [...current, next];
+  }
+  return current;
+}
+
+function mergeRawCandleSeries(current: Candle[], next: Candle) {
+  if (!current.length) {
+    return [next];
+  }
+  const last = current[current.length - 1];
+  if (last.open_time === next.open_time) {
+    return [...current.slice(0, -1), next];
+  }
+  if (last.open_time < next.open_time) {
     return [...current, next];
   }
   return current;
@@ -318,6 +349,7 @@ export function TradingLabPage() {
   });
   const [status, setStatus] = useState("loading market data");
   const [candles, setCandles] = useState<CandlestickData[]>([]);
+  const [rawCandles, setRawCandles] = useState<Candle[]>([]);
   const [markers, setMarkers] = useState<Marker[]>([]);
   const [equityCurve, setEquityCurve] = useState<EquityPoint[]>([]);
   const [trades, setTrades] = useState<BacktestTrade[]>([]);
@@ -348,16 +380,21 @@ export function TradingLabPage() {
   const ema20Api = useRef<ISeriesApi<"Line"> | null>(null);
   const ema50Api = useRef<ISeriesApi<"Line"> | null>(null);
   const ema200Api = useRef<ISeriesApi<"Line"> | null>(null);
+  const volumeApi = useRef<ISeriesApi<"Histogram"> | null>(null);
   const heikinAshiApi = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const chartDataRef = useRef<{
     candles: CandlestickData[];
+    rawCandles: Candle[];
     heikinAshi: CandlestickData[];
+    volume: Array<{ time: UTCTimestamp; value: number; color: string }>;
     ema20: LineData[];
     ema50: LineData[];
     ema200: LineData[];
   }>({
     candles: [],
+    rawCandles: [],
     heikinAshi: [],
+    volume: [],
     ema20: [],
     ema50: [],
     ema200: [],
@@ -506,17 +543,20 @@ function updateChartZones() {
   setChartZones(segments);
 }
 
-  function applyChartData(candleData: CandlestickData[]) {
-    if (!seriesApi.current || !chartApi.current || !candleData.length) {
+  function applyChartData(candleData: CandlestickData[], rawCandleData: Candle[]) {
+    if (!seriesApi.current || !chartApi.current || !candleData.length || !rawCandleData.length) {
       return;
     }
     const ema20 = emaSeries(candleData, 20);
     const ema50 = emaSeries(candleData, 50);
     const ema200 = emaSeries(candleData, 200);
+    const volume = volumeSeries(rawCandleData);
     const heikinAshi = heikinAshiSeries(candleData);
     chartDataRef.current = {
       candles: candleData,
+      rawCandles: rawCandleData,
       heikinAshi,
+      volume,
       ema20,
       ema50,
       ema200,
@@ -528,6 +568,7 @@ function updateChartZones() {
     ema20Api.current?.setData(ema20);
     ema50Api.current?.setData(ema50);
     ema200Api.current?.setData(ema200);
+    volumeApi.current?.setData(volume);
     chartApi.current.applyOptions({
       localization: { priceFormatter: (price: number) => formatNumber(price) },
     });
@@ -567,6 +608,7 @@ function updateChartZones() {
 
         const candleData = candlesRes.candles.map(toSeries);
         setCandles(candleData);
+        setRawCandles(candlesRes.candles);
         void fetchSignals(SYMBOL, chartInterval, 100)
           .then((signalsRes) => {
             if (cancelled || chartLoadSeqRef.current !== loadSeq) {
@@ -595,8 +637,8 @@ function updateChartZones() {
   }, [chartInterval, chartCandleLimit]);
 
   useEffect(() => {
-    applyChartData(candles);
-  }, [candles]);
+    applyChartData(candles, rawCandles);
+  }, [candles, rawCandles]);
 
   useEffect(() => {
     if (!chartRef.current) {
@@ -667,6 +709,13 @@ function updateChartZones() {
       priceLineVisible: false,
       lastValueVisible: false,
     });
+    const volume = chart.addHistogramSeries({
+      priceScaleId: "",
+      priceFormat: {
+        type: "volume",
+      },
+      color: "rgba(15, 157, 88, 0.55)",
+    });
     const heikinAshi = chart.addCandlestickSeries({
       visible: false,
       upColor: "rgba(34, 197, 94, 0.28)",
@@ -681,10 +730,11 @@ function updateChartZones() {
     ema20Api.current = ema20;
     ema50Api.current = ema50;
     ema200Api.current = ema200;
+    volumeApi.current = volume;
     heikinAshiApi.current = heikinAshi;
     chartPaneCellRef.current = chart.chartElement().querySelector("table tr td:nth-child(2)") as HTMLTableCellElement | null;
     updateCherryPins();
-    applyChartData(chartDataRef.current.candles);
+    applyChartData(chartDataRef.current.candles, chartDataRef.current.rawCandles);
     if (chartDataRef.current.candles.length) {
       chart.timeScale().fitContent();
       chartAutoFitRef.current = true;
@@ -817,6 +867,7 @@ function updateChartZones() {
       ema20Api.current = null;
       ema50Api.current = null;
       ema200Api.current = null;
+      volumeApi.current = null;
       chartPaneCellRef.current = null;
     };
   }, []);
@@ -856,6 +907,7 @@ function updateChartZones() {
 
         if (payload.type === "candle" && payload.candle.interval === chartInterval && seriesApi.current) {
           setCandles((current) => mergeCandleSeries(current, toSeries(payload.candle)));
+          setRawCandles((current) => mergeRawCandleSeries(current, payload.candle));
           updateCherryPins();
           updateChartZones();
         }
