@@ -412,9 +412,14 @@ export async function fetchCandles(symbol: string, interval: string, limit = 300
     if (!response.ok) {
       throw new Error(`backend candles request failed: ${response.status}`);
     }
-    return (await response.json()) as { candles: Candle[] };
+    const payload = (await response.json()) as { candles: Candle[] };
+    if (payload.candles.length >= limit) {
+      return payload;
+    }
+    const candles = await fetchBinanceCandlesPaged(symbol, interval, Math.min(limit, 250000));
+    return { candles };
   } catch {
-    const candles = await fetchBinanceCandlesPaged(symbol, interval, Math.min(limit, 100000));
+    const candles = await fetchBinanceCandlesPaged(symbol, interval, Math.min(limit, 250000));
     return { candles };
   }
 }

@@ -232,7 +232,7 @@ function intervalToMinutes(interval: string) {
 
 function chartCandleLimitFor(interval: string, historyDays: number) {
   const required = Math.ceil((historyDays * 24 * 60) / intervalToMinutes(interval)) + 1500;
-  return Math.min(Math.max(required, 2500), 100000);
+  return Math.min(Math.max(required, 2500), 250000);
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -246,6 +246,7 @@ export function TradingLabPage() {
   const [capital, setCapital] = useState(1000);
   const [leverageInput, setLeverageInput] = useState("1.0");
   const [chartMaximized, setChartMaximized] = useState(false);
+  const [chartHistoryRange] = useState<HistoryRange>("ALL");
   const [stats, setStats] = useState({
     start_capital: 1000,
     final_equity: 1000,
@@ -310,7 +311,7 @@ export function TradingLabPage() {
   const verticalShiftPxRef = useRef(0);
   const leverage = sanitizeLeverage(leverageInput);
   const lookbackDays = historyDaysForRange(historyRange);
-  const chartCandleLimit = chartCandleLimitFor(chartInterval, lookbackDays);
+  const chartCandleLimit = chartCandleLimitFor(chartInterval, historyDaysForRange(chartHistoryRange));
 
   function syncChartHover(time: number | null) {
     chartHoverTimeRef.current = time;
@@ -1045,13 +1046,13 @@ export function TradingLabPage() {
           <div className="strategy-note">This strategy is long-only. Shorting is not active yet. Funding and fiat conversion fees are excluded.</div>
         </div>
 
-        <div className="section stack">
-          <div className="pill">Status: {status}</div>
-          <div className="pill">Last signal: {lastSignal}</div>
-        </div>
       </aside>
 
       <main className={`main ${chartMaximized ? "maximized" : ""}`}>
+        <div className="page-status-bar">
+          <div className="pill">Status: {status}</div>
+          <div className="pill">Last signal: {lastSignal}</div>
+        </div>
         <div className="chart-header">
           <div>
             <div className="pill">{SYMBOL}</div>
