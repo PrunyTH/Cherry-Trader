@@ -1349,26 +1349,6 @@ function updateChartZones() {
             </button>
           </div>
         </div>
-        {showAdminPanel ? (
-          <section className="panel admin-panel">
-            <div className="panel-head">
-              <div>
-                <h3>Strategy History</h3>
-                <div className="table-note">Top five persisted evaluated combinations ranked by the robustness score stored in the database.</div>
-              </div>
-              <button className="button chart-toggle secondary" onClick={() => void loadAdminRuns()}>
-                Refresh
-              </button>
-            </div>
-            <div className="table-note">
-              Database: backend/data/cherry-trader.sqlite3. Each row links back to the exact git commit and saved bundle used for that evaluation.
-            </div>
-            {adminError ? <div className="error-banner">Admin load failed: {adminError}</div> : null}
-            {adminBusy ? <div className="pill">Loading saved runs...</div> : null}
-            <AdminRunsTable runs={adminRuns} />
-          </section>
-        ) : (
-          <>
         <div className={`chart-wrap ${chartMaximized ? "maximized" : ""}`}>
           <div className="chart-price-pane" ref={chartPaneCellRef}>
             <div className="chart" ref={chartRef} />
@@ -1424,6 +1404,25 @@ function updateChartZones() {
             <div className="chart volume-chart" ref={volumeChartRef} />
           </div>
         </div>
+        {showAdminPanel ? (
+          <section className="panel admin-panel">
+            <div className="panel-head">
+              <div>
+                <h3>Strategy History</h3>
+                <div className="table-note">Top five persisted evaluated combinations ranked by the robustness score stored in the database.</div>
+              </div>
+              <button className="button chart-toggle secondary" onClick={() => void loadAdminRuns()}>
+                Refresh
+              </button>
+            </div>
+            <div className="table-note">
+              Database: backend/data/cherry-trader.sqlite3. Each row links back to the exact git commit and saved bundle used for that evaluation.
+            </div>
+            {adminError ? <div className="error-banner">Admin load failed: {adminError}</div> : null}
+            {adminBusy ? <div className="pill">Loading saved runs...</div> : null}
+            <AdminRunsTable runs={adminRuns} />
+          </section>
+        ) : null}
         <section className="panel comparison-panel heatmap-panel heatmap-first">
           <div className="panel-head">
             <h3>Heatmap</h3>
@@ -1472,8 +1471,6 @@ function updateChartZones() {
             <TradeTable trades={trades} />
           </section>
         </div>
-          </>
-        )}
       </main>
     </div>
   );
