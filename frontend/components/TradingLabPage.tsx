@@ -507,10 +507,7 @@ export function TradingLabPage() {
     if (!heikinAshiApi.current || !chartDataRef.current.candles.length) {
       return;
     }
-    heikinAshiApi.current.applyOptions({ visible: showHeikinAshi });
-    if (showHeikinAshi) {
-      heikinAshiApi.current.setData(chartDataRef.current.heikinAshi);
-    }
+    heikinAshiApi.current.setData(showHeikinAshi ? chartDataRef.current.heikinAshi : []);
   }, [showHeikinAshi]);
 
   useEffect(() => {
