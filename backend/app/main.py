@@ -27,7 +27,7 @@ from .db import (
     set_strategy_setting,
     upsert_candle,
 )
-from .schemas import BacktestRequest, StrategyParams
+from .schemas import BacktestBundleRequest, BacktestRequest, StrategyParams
 from .services.binance import SUPPORTED_INTERVALS, fetch_klines_history, stream_kline
 from .services.binance import fetch_klines_range
 from .services.market_data import MarketDataHub, StrategyRuntime
@@ -152,6 +152,28 @@ def schedule_cache_repair(symbol: str, interval: str) -> None:
             with repair_jobs_lock:
                 repair_jobs.discard(key)
 
+
+def prepare_backtest_candles(candles: list[dict[str, object]], lookback_days: int) -> tuple[list[dict[str, object]], int | None]:
+    if not candles:
+        return [], None
+    latest_close_time = int(candles[-1]["close_time"])
+    evaluation_start_time = latest_close_time - lookback_days * 86_400_000
+    warmup_bars = 250
+    first_eval_index = next((index for index, candle in enumerate(candles) if int(candle["close_time"]) >= evaluation_start_time), len(candles))
+    start_index = max(0, first_eval_index - warmup_bars)
+    return candles[start_index:], evaluation_start_time
+
+
+def backtest_stats(result) -> dict[str, float]:
+    return {
+        "total_return_pct": result.total_return_pct,
+        "final_equity": result.final_equity,
+        "total_trades": result.total_trades,
+        "win_rate": result.win_rate,
+        "total_fees": result.total_fees,
+        "max_drawdown": result.max_drawdown,
+    }
+
     threading.Thread(target=_runner, daemon=True).start()
 
 
@@ -224,15 +246,7 @@ def update_strategy(symbol: str = settings.default_symbol, interval: str = "1m",
 @app.post("/api/backtest")
 def api_backtest(request: BacktestRequest):
     candles = get_all_closed_candles(request.symbol, request.interval)
-    evaluation_start_time = None
-    if candles:
-        latest_close_time = candles[-1]["close_time"]
-        evaluation_start_time = latest_close_time - request.lookback_days * 86_400_000
-        warmup_bars = 250
-        first_eval_index = next((index for index, candle in enumerate(candles) if candle["close_time"] >= evaluation_start_time), len(candles))
-        start_index = max(0, first_eval_index - warmup_bars)
-        candles = candles[start_index:]
-
+    candles, evaluation_start_time = prepare_backtest_candles(candles, request.lookback_days)
     result = run_trend_pullback_backtest(
         candles,
         request.capital,
@@ -272,6 +286,85 @@ def api_backtest(request: BacktestRequest):
         "trades": result.trades,
         "markers": result.markers,
         "equity_curve": result.equity_curve,
+    }
+
+
+@app.post("/api/backtest/bundle")
+def api_backtest_bundle(request: BacktestBundleRequest):
+    comparison_intervals = list(dict.fromkeys(request.comparison_intervals))
+    stop_multipliers = list(dict.fromkeys(request.stop_multipliers))
+    intervals = list(dict.fromkeys([request.interval, *comparison_intervals]))
+    result_cache: dict[tuple[str, float], Any] = {}
+
+    for interval in intervals:
+        candles = get_all_closed_candles(request.symbol, interval)
+        candles, evaluation_start_time = prepare_backtest_candles(candles, request.lookback_days)
+        for multiplier in list(dict.fromkeys([request.stop_loss_atr_mult, *stop_multipliers])):
+            result_cache[(interval, float(multiplier))] = run_trend_pullback_backtest(
+                candles,
+                request.capital,
+                request.leverage,
+                float(multiplier),
+                evaluation_start_time,
+            )
+
+    base_result = result_cache[(request.interval, float(request.stop_loss_atr_mult))]
+    started_at = int(time.time() * 1000)
+    run_id = create_run(
+        request.symbol,
+        request.interval,
+        "trend_pullback_v1",
+        request.model_dump_json(),
+        started_at,
+    )
+    insert_trades(run_id, request.symbol, request.interval, base_result.trades)
+    finish_run(
+        run_id,
+        base_result.total_trades,
+        base_result.win_rate,
+        base_result.pnl,
+        base_result.max_drawdown,
+        int(time.time() * 1000),
+    )
+
+    comparison_rows = [
+        {
+            "interval": interval,
+            "stats": backtest_stats(result_cache[(interval, float(request.stop_loss_atr_mult))]),
+        }
+        for interval in comparison_intervals
+        if (interval, float(request.stop_loss_atr_mult)) in result_cache
+    ]
+    stop_rows = [
+        {
+            "stopLossAtrMult": multiplier,
+            "stats": backtest_stats(result_cache[(request.interval, float(multiplier))]),
+        }
+        for multiplier in stop_multipliers
+        if (request.interval, float(multiplier)) in result_cache
+    ]
+    heatmap_cells = [
+        {
+            "interval": interval,
+            "stopLossAtrMult": multiplier,
+            "stats": backtest_stats(result_cache[(interval, float(multiplier))]),
+        }
+        for interval in intervals
+        for multiplier in stop_multipliers
+        if (interval, float(multiplier)) in result_cache
+    ]
+
+    return {
+        "run_id": run_id,
+        "base": {
+            "stats": backtest_stats(base_result),
+            "trades": base_result.trades,
+            "markers": base_result.markers,
+            "equity_curve": base_result.equity_curve,
+        },
+        "comparison_rows": comparison_rows,
+        "stop_rows": stop_rows,
+        "heatmap_cells": heatmap_cells,
     }
 
 

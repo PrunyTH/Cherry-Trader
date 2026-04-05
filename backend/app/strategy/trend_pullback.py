@@ -25,8 +25,28 @@ def _atr(highs: list[float], lows: list[float], closes: list[float], period: int
                 abs(highs[i] - closes[i - 1]),
                 abs(lows[i] - closes[i - 1]),
             )
-        )
+    )
     return _ema(true_ranges, period)
+
+
+def _is_bullish_hammer(open_price: float, high_price: float, low_price: float, close_price: float) -> bool:
+    body = abs(close_price - open_price)
+    range_size = max(high_price - low_price, 1e-9)
+    lower_wick = min(open_price, close_price) - low_price
+    upper_wick = high_price - max(open_price, close_price)
+    return close_price > open_price and lower_wick >= body * 2 and upper_wick <= range_size * 0.35
+
+
+def _is_bullish_engulfing(prev_open: float, prev_close: float, open_price: float, close_price: float) -> bool:
+    return close_price > open_price and prev_close < prev_open and close_price >= prev_open and open_price <= prev_close
+
+
+def _volume_confirmed(volumes: list[float], lookback: int = 20, multiplier: float = 1.1) -> bool:
+    if len(volumes) < lookback + 1:
+        return False
+    recent = volumes[-lookback - 1 : -1]
+    average = sum(recent) / len(recent) if recent else 0.0
+    return average > 0 and volumes[-1] >= average * multiplier
 
 
 @dataclass
@@ -81,6 +101,7 @@ class TrendPullbackStrategy:
         highs = [float(candle["high"]) for candle in candles if candle["is_closed"]]
         lows = [float(candle["low"]) for candle in candles if candle["is_closed"]]
         opens = [float(candle["open"]) for candle in candles if candle["is_closed"]]
+        volumes = [float(candle["volume"]) for candle in candles if candle["is_closed"]]
         if len(closes) < self.filter_period + 2:
             return None
 
@@ -99,6 +120,13 @@ class TrendPullbackStrategy:
         trend_up = trend_line > filter_line and price > trend_line and trend_line >= trend_ema[-4]
         pullback_touched = lows[-1] <= entry_line * 1.002
         reclaim = price > entry_line and price > open_price
+        volume_ok = _volume_confirmed(volumes)
+        hammer_ok = _is_bullish_hammer(opens[-1], highs[-1], lows[-1], closes[-1]) or _is_bullish_engulfing(
+            opens[-2],
+            closes[-2],
+            open_price,
+            price,
+        )
         exit_long = price < entry_line or price < trend_line or trend_line < filter_line
 
         if self.in_position:
@@ -109,7 +137,7 @@ class TrendPullbackStrategy:
             return None
 
         if self.setup_active:
-            if trend_up and reclaim:
+            if trend_up and reclaim and volume_ok and hammer_ok:
                 self.setup_active = False
                 self.in_position = True
                 return TrendPullbackEvent("buy", "trend_entry_long", price, entry_line, trend_line, filter_line, atr_value)

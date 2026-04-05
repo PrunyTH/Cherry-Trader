@@ -27,8 +27,28 @@ def _atr(highs: list[float], lows: list[float], closes: list[float], period: int
                 abs(highs[i] - closes[i - 1]),
                 abs(lows[i] - closes[i - 1]),
             )
-        )
+    )
     return _ema(true_ranges, period)
+
+
+def _is_bullish_hammer(open_price: float, high_price: float, low_price: float, close_price: float) -> bool:
+    body = abs(close_price - open_price)
+    range_size = max(high_price - low_price, 1e-9)
+    lower_wick = min(open_price, close_price) - low_price
+    upper_wick = high_price - max(open_price, close_price)
+    return close_price > open_price and lower_wick >= body * 2 and upper_wick <= range_size * 0.35
+
+
+def _is_bullish_engulfing(prev_open: float, prev_close: float, open_price: float, close_price: float) -> bool:
+    return close_price > open_price and prev_close < prev_open and close_price >= prev_open and open_price <= prev_close
+
+
+def _volume_confirmed(volumes: list[float], index: int, lookback: int = 20, multiplier: float = 1.1) -> bool:
+    if index < lookback:
+        return False
+    recent = volumes[index - lookback : index]
+    average = sum(recent) / len(recent) if recent else 0.0
+    return average > 0 and volumes[index] >= average * multiplier
 
 
 @dataclass
@@ -70,6 +90,7 @@ def run_trend_pullback_backtest(
     highs = [float(candle["high"]) for candle in candles]
     lows = [float(candle["low"]) for candle in candles]
     opens = [float(candle["open"]) for candle in candles]
+    volumes = [float(candle["volume"]) for candle in candles]
 
     entry_ema = _ema(closes, 20)
     trend_ema = _ema(closes, 50)
@@ -97,6 +118,13 @@ def run_trend_pullback_backtest(
         trend_line = trend_ema[i]
         filter_line = filter_ema[i]
         open_price = opens[i]
+        volume_ok = _volume_confirmed(volumes, i)
+        hammer_ok = _is_bullish_hammer(opens[i], highs[i], lows[i], closes[i]) or _is_bullish_engulfing(
+            opens[i - 1],
+            closes[i - 1],
+            open_price,
+            price,
+        )
         atr_value = atr[i] if atr else 0.0
         stop_triggered = False
         stop_price = None
@@ -148,7 +176,7 @@ def run_trend_pullback_backtest(
             )
             position = None
             setup_active = False
-        elif position is None and setup_active and trend_up and reclaim:
+        elif position is None and setup_active and trend_up and reclaim and volume_ok and hammer_ok:
             entry_price = price
             stop_price = max(entry_price - atr_value * stop_loss_atr_mult, entry_price * 0.5)
             notional = equity * leverage

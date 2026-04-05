@@ -20,7 +20,7 @@ import {
   fetchCandles,
   fetchChartCandles,
   fetchSignals,
-  runBacktest,
+  runBacktestBundle,
   Signal,
 } from "@/lib/api";
 
@@ -186,6 +186,34 @@ function emaSeries(candles: CandlestickData[], period: number): LineData[] {
   }));
 }
 
+function heikinAshiSeries(candles: CandlestickData[]): CandlestickData[] {
+  if (!candles.length) {
+    return [];
+  }
+
+  const series: CandlestickData[] = [];
+  let previousOpen = (candles[0].open + candles[0].close) / 2;
+  let previousClose = (candles[0].open + candles[0].high + candles[0].low + candles[0].close) / 4;
+
+  for (const candle of candles) {
+    const haClose = (candle.open + candle.high + candle.low + candle.close) / 4;
+    const haOpen = series.length === 0 ? previousOpen : (previousOpen + previousClose) / 2;
+    const haHigh = Math.max(candle.high, haOpen, haClose);
+    const haLow = Math.min(candle.low, haOpen, haClose);
+    series.push({
+      time: candle.time,
+      open: haOpen,
+      high: haHigh,
+      low: haLow,
+      close: haClose,
+    });
+    previousOpen = haOpen;
+    previousClose = haClose;
+  }
+
+  return series;
+}
+
 function mergeCandleSeries(current: CandlestickData[], next: CandlestickData) {
   if (!current.length) {
     return [next];
@@ -284,6 +312,7 @@ export function TradingLabPage() {
   const [chartZones, setChartZones] = useState<ChartZone[]>([]);
   const [chartHover, setChartHover] = useState<ChartHoverSnapshot | null>(null);
   const [chartZoomed, setChartZoomed] = useState(false);
+  const [showHeikinAshi, setShowHeikinAshi] = useState(false);
   const chartAutoFitRef = useRef(true);
   const chartLatestViewRef = useRef(false);
   const chartRef = useRef<HTMLDivElement | null>(null);
@@ -292,13 +321,16 @@ export function TradingLabPage() {
   const ema20Api = useRef<ISeriesApi<"Line"> | null>(null);
   const ema50Api = useRef<ISeriesApi<"Line"> | null>(null);
   const ema200Api = useRef<ISeriesApi<"Line"> | null>(null);
+  const heikinAshiApi = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const chartDataRef = useRef<{
     candles: CandlestickData[];
+    heikinAshi: CandlestickData[];
     ema20: LineData[];
     ema50: LineData[];
     ema200: LineData[];
   }>({
     candles: [],
+    heikinAshi: [],
     ema20: [],
     ema50: [],
     ema200: [],
@@ -419,13 +451,18 @@ export function TradingLabPage() {
     const ema20 = emaSeries(candleData, 20);
     const ema50 = emaSeries(candleData, 50);
     const ema200 = emaSeries(candleData, 200);
+    const heikinAshi = heikinAshiSeries(candleData);
     chartDataRef.current = {
       candles: candleData,
+      heikinAshi,
       ema20,
       ema50,
       ema200,
     };
     seriesApi.current.setData(candleData);
+    if (heikinAshiApi.current) {
+      heikinAshiApi.current.setData(heikinAshi);
+    }
     ema20Api.current?.setData(ema20);
     ema50Api.current?.setData(ema50);
     ema200Api.current?.setData(ema200);
@@ -445,6 +482,16 @@ export function TradingLabPage() {
     updateChartZones();
     syncChartHover(chartHoverTimeRef.current);
   }
+
+  useEffect(() => {
+    if (!heikinAshiApi.current || !chartDataRef.current.candles.length) {
+      return;
+    }
+    heikinAshiApi.current.applyOptions({ visible: showHeikinAshi });
+    if (showHeikinAshi) {
+      heikinAshiApi.current.setData(chartDataRef.current.heikinAshi);
+    }
+  }, [showHeikinAshi]);
 
   useEffect(() => {
     const loadSeq = chartLoadSeqRef.current + 1;
@@ -561,11 +608,21 @@ export function TradingLabPage() {
       priceLineVisible: false,
       lastValueVisible: false,
     });
+    const heikinAshi = chart.addCandlestickSeries({
+      visible: false,
+      upColor: "rgba(34, 197, 94, 0.28)",
+      downColor: "rgba(239, 68, 68, 0.28)",
+      borderUpColor: "rgba(34, 197, 94, 0.34)",
+      borderDownColor: "rgba(239, 68, 68, 0.34)",
+      wickUpColor: "rgba(34, 197, 94, 0.22)",
+      wickDownColor: "rgba(239, 68, 68, 0.22)",
+    });
     chartApi.current = chart;
     seriesApi.current = series;
     ema20Api.current = ema20;
     ema50Api.current = ema50;
     ema200Api.current = ema200;
+    heikinAshiApi.current = heikinAshi;
     chartPaneCellRef.current = chart.chartElement().querySelector("table tr td:nth-child(2)") as HTMLTableCellElement | null;
     updateCherryPins();
     applyChartData(chartDataRef.current.candles);
@@ -767,112 +824,42 @@ export function TradingLabPage() {
     try {
       setProgressStage("loading");
       setProgressPct(8);
-      setStatus("running backtest");
-      const result = await runBacktest(SYMBOL, backtestInterval, lookbackDays, capital, leverage);
+      setStatus("running bundled backtest");
+      setComparisonBusy(true);
+      setStopBusy(true);
+      setHeatmapBusy(true);
+      const result = await runBacktestBundle(
+        SYMBOL,
+        backtestInterval,
+        lookbackDays,
+        capital,
+        leverage,
+      );
       setProgressStage("backtest");
-      setProgressPct(34);
-      setStats(result.stats);
-      setTrades(result.trades ?? []);
-      setEquityCurve(result.equity_curve ?? []);
-      if (result.markers?.length) {
+      setProgressPct(70);
+      setStats(result.base.stats);
+      setTrades(result.base.trades ?? []);
+      setEquityCurve(result.base.equity_curve ?? []);
+      if (result.base.markers?.length) {
         setMarkers(
-          result.markers.map((marker) => ({
+          result.base.markers.map((marker) => ({
             ...marker,
             time: marker.time as UTCTimestamp,
           })),
         );
       }
+      setComparisonRows(result.comparison_rows ?? []);
+      setStopRows(result.stop_rows ?? []);
+      setHeatmapCells(result.heatmap_cells ?? []);
+      setProgressStage("done");
+      setProgressPct(100);
       setStatus(`run ${result.run_id} complete`);
-
-      setComparisonBusy(true);
-      const comparisonTargets = [backtestInterval, ...COMPARISON_INTERVALS.filter((candidate) => candidate !== backtestInterval)];
-      const comparisons = await Promise.allSettled(
-        comparisonTargets.map(async (frame) => {
-          const frameResult = frame === backtestInterval ? result : await runBacktest(SYMBOL, frame, lookbackDays, capital, leverage);
-          return {
-            interval: frame,
-            stats: {
-              total_return_pct: frameResult.stats.total_return_pct,
-              final_equity: frameResult.stats.final_equity,
-              total_trades: frameResult.stats.total_trades,
-              win_rate: frameResult.stats.win_rate,
-              total_fees: frameResult.stats.total_fees,
-              max_drawdown: frameResult.stats.max_drawdown,
-            },
-          };
-        }),
-      );
-      setComparisonRows(
-        comparisons
-          .filter((entry): entry is PromiseFulfilledResult<TimeframeComparisonRow> => entry.status === "fulfilled")
-          .map((entry) => entry.value),
-      );
-      setProgressStage("compare");
-      setProgressPct(68);
-
-      setStopBusy(true);
-      const stopResults = await Promise.allSettled(
-        STOP_MULTIPLIERS.map(async (multiplier) => {
-          const stopResult =
-            multiplier === 1.5 ? result : await runBacktest(SYMBOL, backtestInterval, lookbackDays, capital, leverage, multiplier);
-          return {
-            stopLossAtrMult: multiplier,
-            stats: {
-              total_return_pct: stopResult.stats.total_return_pct,
-              final_equity: stopResult.stats.final_equity,
-              total_trades: stopResult.stats.total_trades,
-              win_rate: stopResult.stats.win_rate,
-              total_fees: stopResult.stats.total_fees,
-              max_drawdown: stopResult.stats.max_drawdown,
-            },
-          };
-        }),
-      );
-      setStopRows(
-        stopResults
-          .filter((entry): entry is PromiseFulfilledResult<StopSensitivityRow> => entry.status === "fulfilled")
-          .map((entry) => entry.value),
-      );
-      setProgressStage("stops");
-      setProgressPct(92);
-
-      setHeatmapBusy(true);
-      const heatmapPairs = COMPARISON_INTERVALS.flatMap((frame) =>
-        STOP_MULTIPLIERS.map((multiplier) => ({ frame, multiplier })),
-      );
-      const heatmapResults = await Promise.allSettled(
-        heatmapPairs.map(async ({ frame, multiplier }) => {
-          const heatmapResult =
-            frame === backtestInterval && multiplier === 1.5
-              ? result
-              : await runBacktest(SYMBOL, frame, lookbackDays, capital, leverage, multiplier);
-          return {
-            interval: frame,
-            stopLossAtrMult: multiplier,
-            stats: {
-              total_return_pct: heatmapResult.stats.total_return_pct,
-              final_equity: heatmapResult.stats.final_equity,
-              total_trades: heatmapResult.stats.total_trades,
-              win_rate: heatmapResult.stats.win_rate,
-              total_fees: heatmapResult.stats.total_fees,
-              max_drawdown: heatmapResult.stats.max_drawdown,
-            },
-          };
-        }),
-      );
-      setHeatmapCells(
-        heatmapResults
-          .filter((entry): entry is PromiseFulfilledResult<HeatmapCell> => entry.status === "fulfilled")
-          .map((entry) => entry.value),
-      );
     } catch (error) {
       setStatus(`backtest failed: ${error instanceof Error ? error.message : "unknown error"}`);
     } finally {
       setComparisonBusy(false);
       setStopBusy(false);
       setHeatmapBusy(false);
-      setProgressStage("done");
-      setProgressPct(100);
       window.setTimeout(() => {
         setProgressStage("idle");
         setProgressPct(0);
@@ -1086,6 +1073,13 @@ export function TradingLabPage() {
               <span className="legend-item"><span className="legend-swatch ema20" />EMA 20</span>
               <span className="legend-item"><span className="legend-swatch ema50" />EMA 50</span>
               <span className="legend-item"><span className="legend-swatch ema200" />EMA 200</span>
+              <button
+                type="button"
+                className={`legend-item legend-toggle ${showHeikinAshi ? "active" : ""}`}
+                onClick={() => setShowHeikinAshi((current) => !current)}
+              >
+                Heikin-Ashi {showHeikinAshi ? "on" : "off"}
+              </button>
               <span className="legend-item">Drag to pan</span>
               <span className="legend-item">Mouse wheel zoom</span>
             </div>

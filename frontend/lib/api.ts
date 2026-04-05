@@ -70,6 +70,29 @@ export type BacktestResponse = {
   }>;
 };
 
+export type BacktestBundleResponse = {
+  run_id: number;
+  base: {
+    stats: BacktestStats;
+    trades: BacktestTrade[];
+    markers: BacktestResponse["markers"];
+    equity_curve: BacktestResponse["equity_curve"];
+  };
+  comparison_rows: Array<{
+    interval: string;
+    stats: BacktestStats;
+  }>;
+  stop_rows: Array<{
+    stopLossAtrMult: number;
+    stats: BacktestStats;
+  }>;
+  heatmap_cells: Array<{
+    interval: string;
+    stopLossAtrMult: number;
+    stats: BacktestStats;
+  }>;
+};
+
 function intervalToMinutes(interval: string): number {
   const lookup: Record<string, number> = {
     "1m": 1,
@@ -465,6 +488,48 @@ export async function runBacktest(
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error("backtest request timed out while waiting for the backend cache");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+export async function runBacktestBundle(
+  symbol: string,
+  interval: string,
+  lookback_days: number,
+  capital: number,
+  leverage: number,
+  stop_loss_atr_mult = 1.5,
+  comparison_intervals: string[] = ["15m", "1h", "4h", "1d", "1w", "1M"],
+  stop_multipliers: number[] = [0.75, 1.0, 1.5, 2.0, 2.5, 3.0],
+) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 60_000);
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/backtest/bundle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        symbol,
+        interval,
+        lookback_days,
+        capital,
+        leverage,
+        stop_loss_atr_mult,
+        comparison_intervals,
+        stop_multipliers,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`backend backtest bundle request failed: ${response.status}`);
+    }
+    return (await response.json()) as BacktestBundleResponse;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("backtest bundle request timed out while waiting for the backend cache");
     }
     throw error;
   } finally {

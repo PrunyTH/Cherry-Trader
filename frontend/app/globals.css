@@ -438,6 +438,17 @@ input {
   border: 1px solid var(--line);
 }
 
+.legend-toggle {
+  cursor: pointer;
+  color: var(--text);
+}
+
+.legend-toggle.active {
+  color: var(--accent-2);
+  border-color: rgba(15, 157, 88, 0.24);
+  box-shadow: 0 8px 16px rgba(15, 157, 88, 0.08);
+}
+
 .chart-timeframe-switcher {
   display: flex;
   flex-wrap: wrap;
